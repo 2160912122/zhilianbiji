@@ -1,6 +1,7 @@
 import datetime
 from datetime import datetime, timedelta, timezone
 
+
 # 模拟前端的formatDate函数
 def formatDate(isoString):
     if not isoString:
@@ -15,6 +16,7 @@ def formatDate(isoString):
     except Exception as e:
         print(f"格式化日期错误: {e}")
         return isoString
+
 
 # 测试时区处理
 print("=== 时区处理测试 ===")
