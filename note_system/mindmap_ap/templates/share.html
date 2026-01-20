@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ note.title }} - 笔记分享</title>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/base16-light.min.css" rel="stylesheet">
+<style>
+
+    body {
+        font-family: 'Segoe UI', Tahoma, Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #f5f5f5;
+        color: #333;
+        height: 100vh; /* 全屏高度 */
+        overflow: hidden; /* 防止滚动条 */
+    }
+    .container {
+        height: 100vh; /* 全屏容器 */
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+    }
+    .header {
+        background: #fafafa;
+        padding: 15px 20px;
+        border-bottom: 1px solid #e0e0e0;
+        flex-shrink: 0; /* 防止头部被压缩 */
+    }
+    h1 {
+        font-size: 20px;
+        margin: 0 0 8px 0;
+    }
+    .share-info {
+        color: #666;
+        font-size: 14px;
+        padding: 8px 12px;
+        background: #e8f0fe;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+    .expired {
+        color: #dc3545;
+        background: #fff3cd;
+    }
+    .editor-toolbar {
+        display: flex;
+        justify-content: space-between;
+        background: #fafafa;
+        border-bottom: 1px solid #e0e0e0;
+        padding: 8px 20px;
+        flex-shrink: 0; /* 防止工具栏被压缩 */
+    }
+    .editor-type button {
+        background: none;
+        border: none;
+        padding: 6px 12px;
+        margin-right: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .editor-type button.active {
+        background: #1976d2;
+        color: #fff;
+    }
+    .editor-actions button {
+        background: #1976d2;
+        color: #fff;
+        border: none;
+        padding: 6px 12px;
+        margin-left: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .editor-actions button:hover {
+        background: #1565c0;
+    }
+    .content {
+        flex: 1; /* 占据剩余所有空间 */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden; /* 防止内容溢出 */
+    }
+    #richtext-container, #markdown-container {
+        flex: 1;
+        display: none;
+        overflow: hidden; /* 防止滚动条 */
+    }
+
+    /* 富文本编辑器全屏 */
+    #richtext-container .ql-editor {
+        height: 100%;
+        padding: 20px;
+        font-size: 16px;
+        line-height: 1.6;
+    }
+
+    /* Markdown 编辑器全屏布局 */
+    #markdown-container {
+        display: none;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    #markdown-editor-wrapper {
+        display: flex;
+        flex: 1;
+        height: 100%;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    #markdown-editor-wrapper > div {
+        flex: 1;
+        height: 100%;
+        overflow: auto;
+    }
+
+    /* CodeMirror 编辑器全屏 */
+    .CodeMirror {
+        height: 100% !important;
+        font-size: 16px;
+        line-height: 1.6;
+    }
+
+    .CodeMirror-lines {
+        padding: 20px;
+    }
+
+    /* 预览区域 */
+    #markdown-preview {
+        padding: 20px;
+        background: #fafafa;
+        border-left: 1px solid #e0e0e0;
+        overflow-y: auto;
+        line-height: 1.6;
+        font-size: 16px;
+    }
+
+    /* 只读模式内容 */
+    .readonly-content {
+        flex: 1;
+        padding: 20px;
+        line-height: 1.6;
+        font-size: 16px;
+        overflow-y: auto;
+    }
+
+    /* 过期提示样式 */
+    .expired-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        flex: 1;
+        padding: 50px;
+        color: #666;
+    }
+
+    /* Markdown 预览样式 */
+    .readonly-content h2 { font-size: 20px; margin-top: 20px; }
+    .readonly-content p { margin: 10px 0; }
+    .readonly-content ul, .readonly-content ol { margin: 10px 0 10px 20px; }
+    .readonly-content pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
+    .readonly-content code { background: #f8f9fa; padding: 2px 4px; border-radius: 4px; }
+
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        #markdown-editor-wrapper {
+            flex-direction: column;
+        }
+        #markdown-preview {
+            border-left: none;
+            border-top: 1px solid #e0e0e0;
+        }
+        .editor-toolbar {
+            flex-direction: column;
+            gap: 10px;
+        }
+        .editor-actions {
+            align-self: flex-end;
+        }
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ note.title }}</h1>
+
+            <!-- 分享信息提示 -->
+            <div class="share-info {% if is_expired %}expired{% endif %}">
+                {% if is_expired %}
+                    <i class="fa fa-exclamation-circle"></i> 注意：此分享链接已过期
+                {% else %}
+                    <i class="fa fa-info-circle"></i> 分享链接
+                    {% if expire_at %}
+                        （将在 {{ expire_at.astimezone().strftime('%Y-%m-%d %H:%M') }} 过期）
+                    {% else %}
+                        （永久有效）
+                    {% endif %}
+                    - 权限：<strong>{{ '可编辑' if permission == 'edit' else '只读' }}</strong>
+                {% endif %}
+            </div>
+
+            <!-- 编辑模式工具栏（仅当有编辑权限且未过期时显示） -->
+            {% if not is_expired and permission == 'edit' %}
+            <div class="editor-toolbar">
+                <div class="editor-type">
+                    <button class="type-btn" id="richtext-btn" data-type="richtext">
+                        <i class="fa fa-file-text-o"></i> 富文本
+                    </button>
+                    <button class="type-btn" id="markdown-btn" data-type="markdown">
+                        <i class="fa fa-markdown"></i> Markdown
+                    </button>
+                </div>
+                <div class="editor-actions">
+                    <button id="save-btn"><i class="fa fa-save"></i> 保存</button>
+                    <button id="switch-mode-btn"><i class="fa fa-eye"></i> 切换到只读模式</button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 内容区域 -->
+        <div class="content">
+            {% if is_expired %}
+                <div style="text-align: center; padding: 50px; color: #666;">
+                    <i class="fa fa-clock-o" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <h3>分享链接已过期</h3>
+                    <p>此分享链接已超过有效期，请联系笔记所有者获取新的分享链接。</p>
+                </div>
+            {% elif permission == 'edit' %}
+                <!-- 编辑模式 -->
+                <div id="richtext-container"></div>
+                <div id="markdown-container" style="display: none;">
+                    <div id="markdown-editor-wrapper">
+                        <div>
+                            <textarea id="markdown-editor" style="display: none;"></textarea>
+                        </div>
+                        <div id="markdown-preview"></div>
+                    </div>
+                </div>
+            {% else %}
+                <!-- 只读模式 -->
+                <div class="readonly-content">
+                    {% if note.type == 'richtext' %}
+                        {{ note.content|safe }}
+                    {% else %}
+                        {{ note.content|markdown }}
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 第三方脚本 -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<script>
+    // 分享相关变量
+    const shareToken = "{{ token }}";
+    const sharePermission = {{ permission|tojson }};
+    const noteId = {{ note.id }};
+    const noteType = "{{ note.type }}";
+    const noteContent = {{ note.content | tojson | safe }};
+    const isExpired = {{ is_expired | tojson }};
+
+    let currentEditorType = noteType;
+    let quillEditor = null;
+    let markdownEditor = null;
+
+    // 初始化编辑器（仅编辑模式，修复：新增富文本内容填充）
+    function initEditors() {
+        if (sharePermission !== 'edit' || isExpired) return;
+
+        // 富文本编辑器（修复：初始化后填充内容）
+        quillEditor = new Quill('#richtext-container', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    [{ 'header': [1,2,3,false] }],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link'],
+                    ['clean']
+                ]
+            },
+            readOnly: false  // 确保可编辑
+        });
+        // 关键修复：给富文本编辑器填充笔记内容（HTML格式）
+        quillEditor.root.innerHTML = noteContent;
+
+        // Markdown 编辑器（原有逻辑保留）
+        const markdownTextarea = document.getElementById('markdown-editor');
+        markdownTextarea.value = noteContent || '';
+        markdownEditor = CodeMirror.fromTextArea(markdownTextarea, {
+            mode: 'markdown',
+            lineNumbers: true,
+            lineWrapping: true,
+            theme: 'base16-light',
+            readOnly: false,  // 确保可编辑
+            autofocus: true   // 自动聚焦
+        });
+        markdownEditor.setSize('100%', '100%');
+        markdownEditor.on('change', updateMarkdownPreview);
+
+        // 显示对应的编辑器（按笔记原始类型初始化）
+        switchEditor(currentEditorType);
+    }
+
+    // 切换编辑器（修复：同步切换时的内容，避免空白/错位）
+    function switchEditor(type) {
+        // 1. 先获取当前编辑器的最新内容（切换前保存内容）
+        let currentContent = '';
+        if (currentEditorType === 'richtext' && quillEditor) {
+            currentContent = quillEditor.root.innerHTML; // 富文本取HTML内容
+        } else if (currentEditorType === 'markdown' && markdownEditor) {
+            currentContent = markdownEditor.getValue(); // Markdown取纯文本内容
+        }
+
+        // 2. 更新编辑器类型，切换容器显示状态
+        currentEditorType = type;
+        const richtextContainer = document.getElementById('richtext-container');
+        const markdownContainer = document.getElementById('markdown-container');
+        richtextContainer.style.display = type === 'richtext' ? 'block' : 'none';
+        markdownContainer.style.display = type === 'markdown' ? 'flex' : 'none';
+
+        // 3. 更新按钮激活状态
+        document.querySelectorAll('.type-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === type);
+        });
+
+        // 4. 关键修复：将当前内容同步到目标编辑器
+        if (type === 'richtext' && quillEditor) {
+            quillEditor.root.innerHTML = currentContent; // 富文本填充HTML
+            quillEditor.focus(); // 聚焦到富文本编辑器
+        } else if (type === 'markdown' && markdownEditor) {
+            markdownEditor.setValue(currentContent); // Markdown填充纯文本
+            updateMarkdownPreview(); // 刷新预览
+            markdownEditor.focus(); // 聚焦到Markdown编辑器
+            setTimeout(() => markdownEditor.refresh(), 100); // 修复编辑器刷新延迟问题
+        }
+    }
+
+    // 更新Markdown预览（原有逻辑保留）
+    function updateMarkdownPreview() {
+        if (!markdownEditor) return;
+        const md = markdownEditor.getValue();
+        document.getElementById('markdown-preview').innerHTML = marked.parse(md);
+    }
+
+    // 保存笔记（原有逻辑保留）
+    async function saveNote() {
+        if (sharePermission !== 'edit' || isExpired) {
+            alert('没有编辑权限或链接已过期');
+            return;
+        }
+
+        const content = currentEditorType === 'richtext'
+            ? quillEditor.root.innerHTML
+            : markdownEditor.getValue();
+
+        try {
+            const response = await fetch(`/api/notes/${noteId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Share-Token': shareToken
+                },
+                body: JSON.stringify({
+                    title: "{{ note.title }}",
+                    type: currentEditorType,
+                    content: content
+                })
+            });
+
+            if (response.ok) {
+                alert('笔记保存成功！');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || '保存失败');
+            }
+        } catch (error) {
+            console.error('保存失败:', error);
+            alert('保存失败: ' + error.message);
+        }
+    }
+
+    // 切换到只读模式（原有逻辑保留）
+    function switchToReadonly() {
+        if (confirm('切换到只读模式后，您将无法再编辑此笔记。确定要切换吗？')) {
+            window.location.href = window.location.href;
+        }
+    }
+
+    // 事件绑定（原有逻辑保留）
+    document.addEventListener('DOMContentLoaded', function() {
+        if (sharePermission === 'edit' && !isExpired) {
+            initEditors(); // 初始化编辑器
+            // 绑定按钮事件
+            document.getElementById('richtext-btn').addEventListener('click', () => switchEditor('richtext'));
+            document.getElementById('markdown-btn').addEventListener('click', () => switchEditor('markdown'));
+            document.getElementById('save-btn').addEventListener('click', saveNote);
+            document.getElementById('switch-mode-btn').addEventListener('click', switchToReadonly);
+
+            // 确保编辑器可聚焦
+            setTimeout(() => {
+                if (currentEditorType === 'markdown' && markdownEditor) {
+                    markdownEditor.focus();
+                }
+            }, 500);
+        }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "id": "markdown_cc769103865f449a",
+  "title": "Markdown文档",
+  "content": "# 欢迎使用DocCraft Markdown编辑器\n\n## 核心特性\n- 实时分屏预览\n- 代码语法高亮（支持Python/Java/JS等）\n- 一键导出MD文件\n- 撤销/重做历史记录\n\n### 代码示例\n```python\n# Python代码演示\ndef hello_doccraft():\n    print(\"Hello, DocCraft!\")\nhello_doccraft()\n```\n\n> 引用文本：Markdown是一种轻量级标记语言，易于读写。\n\n![示例图片](https://picsum.photos/800/400)  \n*图片加载失败时显示此描述*",
+  "last_edit_position": 0,
+  "created": "2025-09-18 12:32",
+  "updated": "2025-09-18 12:32"
+}
