@@ -1,92 +1,169 @@
 <template>
-  <div class="register-container">
-    <div class="register-form card">
-      <h2>注册</h2>
-      
-      <div v-if="userStore.error" class="flash-message flash-error">
-        {{ userStore.error }}
-      </div>
-      
-      <form @submit.prevent="handleRegister">
-        <div>
-          <label for="username">用户名</label>
-          <input 
-            type="text" 
-            id="username" 
-            v-model="credentials.username" 
-            required
-            placeholder="请输入用户名（3-50个字符）"
-          />
+    <div class="register-container">
+        <div class="register-box">
+            <h2>用户注册</h2>
+            <el-form
+                ref="registerFormRef"
+                :model="registerForm"
+                :rules="registerRules"
+                @submit.prevent="handleRegister"
+            >
+                <el-form-item prop="username">
+                    <el-input
+                        v-model="registerForm.username"
+                        placeholder="请输入用户名"
+                        prefix-icon="User"
+                        size="large"
+                    />
+                </el-form-item>
+                <el-form-item prop="email">
+                    <el-input
+                        v-model="registerForm.email"
+                        placeholder="请输入邮箱"
+                        prefix-icon="Message"
+                        size="large"
+                    />
+                </el-form-item>
+                <el-form-item prop="password">
+                    <el-input
+                        v-model="registerForm.password"
+                        type="password"
+                        placeholder="请输入密码"
+                        prefix-icon="Lock"
+                        size="large"
+                    />
+                </el-form-item>
+                <el-form-item prop="confirmPassword">
+                    <el-input
+                        v-model="registerForm.confirmPassword"
+                        type="password"
+                        placeholder="请确认密码"
+                        prefix-icon="Lock"
+                        size="large"
+                        @keyup.enter="handleRegister"
+                    />
+                </el-form-item>
+                <el-form-item>
+                    <el-button
+                        type="primary"
+                        size="large"
+                        @click="handleRegister"
+                        :loading="loading"
+                        style="width: 100%;"
+                    >
+                        注册
+                    </el-button>
+                </el-form-item>
+            </el-form>
+            <div class="register-footer">
+                <span>已有账号？</span>
+                <el-link type="primary" @click="$router.push('/login')">立即登录</el-link>
+            </div>
         </div>
-        
-        <div>
-          <label for="password">密码</label>
-          <input 
-            type="password" 
-            id="password" 
-            v-model="credentials.password" 
-            required
-            placeholder="请输入密码（至少6个字符）"
-          />
-        </div>
-        
-        <div>
-          <button type="submit" class="btn btn-primary" :disabled="userStore.loading">
-            {{ userStore.loading ? '注册中...' : '注册' }}
-          </button>
-        </div>
-      </form>
-      
-      <p class="login-link">
-        已有账号？ <router-link to="/login">立即登录</router-link>
-      </p>
     </div>
-  </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '../store/user'
+import { ElMessage } from 'element-plus'
+import axios from '@/utils/axiosInstance'
 
-const userStore = useUserStore()
 const router = useRouter()
-const credentials = ref({
-  username: '',
-  password: ''
+const registerFormRef = ref()
+const loading = ref(false)
+
+const registerForm = reactive({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
 })
 
+const validatePassword = (rule, value, callback) => {
+    if (value !== registerForm.password) {
+        callback(new Error('两次输入密码不一致'))
+    } else {
+        callback()
+    }
+}
+
+const registerRules = {
+    username: [
+        { required: true, message: '请输入用户名', trigger: 'blur' },
+        { min: 3, message: '用户名长度至少3个字符', trigger: 'blur' }
+    ],
+    email: [
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
+    ],
+    password: [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, message: '密码长度至少6位', trigger: 'blur' }
+    ],
+    confirmPassword: [
+        { required: true, message: '请确认密码', trigger: 'blur' },
+        { validator: validatePassword, trigger: 'blur' }
+    ]
+}
+
 const handleRegister = async () => {
-  try {
-    await userStore.register(credentials.value)
-    router.push('/login')
-  } catch (error) {
-    // 错误已经在userStore中处理
-  }
+    if (!registerFormRef.value) return
+
+    await registerFormRef.value.validate(async (valid) => {
+        if (valid) {
+            loading.value = true
+            try {
+                const { confirmPassword, ...registerData } = registerForm
+                const response = await axios.post('/api/register', registerData)
+
+                localStorage.setItem('token', response.data.access_token)
+                localStorage.setItem('user', JSON.stringify(response.data.user))
+
+                ElMessage.success('注册成功')
+                router.push('/dashboard')
+            } catch (error) {
+                ElMessage.error(error.response?.data?.message || '注册失败')
+            } finally {
+                loading.value = false
+            }
+        }
+    })
 }
 </script>
 
 <style scoped>
 .register-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.register-form {
-  width: 100%;
-  max-width: 400px;
+.register-box {
+    width: 400px;
+    padding: 40px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 15px 35px rgba(50, 50, 93, 0.1), 0 5px 15px rgba(0, 0, 0, 0.07);
 }
 
-.register-form h2 {
-  margin-bottom: 20px;
-  text-align: center;
-  color: #333;
+.register-box h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #333;
 }
 
-.login-link {
-  margin-top: 20px;
-  text-align: center;
+.register-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 20px;
+    color: #666;
+}
+
+.register-footer span {
+    margin-right: 10px;
 }
 </style>
