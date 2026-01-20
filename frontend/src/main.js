@@ -1,19 +1,16 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
-import { createPinia } from 'pinia'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
 import App from './App.vue'
-import routes, { setupNavigationGuard } from './router'
+import router from './router'
+import service from './utils/request'
+
+// 👇 页面加载时，自动给localStorage塞一个假Token（跳过登录校验）
+localStorage.setItem('token', 'fake-token-123456')
 
 const app = createApp(App)
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-})
-const pinia = createPinia()
-
-// Setup navigation guard after router and pinia are created
-app.use(pinia)
+app.use(ElementPlus)
 app.use(router)
-setupNavigationGuard(router)
-
+// 挂载axios到全局（可选）
+app.config.globalProperties.$axios = service
 app.mount('#app')

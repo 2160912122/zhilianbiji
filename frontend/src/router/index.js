@@ -1,130 +1,66 @@
-import Login from '../views/Login.vue'
-import Register from '../views/Register.vue'
-import NoteList from '../views/NoteList.vue'
-import NoteDetail from '../views/NoteDetail.vue'
-import NoteTypeSelect from '../views/NoteTypeSelect.vue'
-import NoteCreate from '../views/NoteCreate.vue'
-import NoteEdit from '../views/NoteEdit.vue'
-import NoteHistory from '../views/NoteHistory.vue'
-import NoteVersionDetail from '../views/NoteVersionDetail.vue'
-import NoteShare from '../views/NoteShare.vue'
-import CategoryManager from '../views/CategoryManager.vue'
-import TagManager from '../views/TagManager.vue'
-import AdminPanel from '../views/AdminPanel.vue'
-import { useUserStore } from '../store/user'
+import { createRouter, createWebHistory } from 'vue-router'
+// 适配你的文件路径：layout在src/layout/下，views在src/views/下
+import MainLayout from '@/layout/MainLayout.vue'
+import LoginPage from '@/views/LoginPage.vue'
+import DashboardPage from '@/views/DashboardPage.vue'
+import UserManagement from '@/views/UserManagement.vue'
+import NoteManagement from '@/views/NoteManagement.vue'
+
+// 路由守卫：校验登录状态（优化逻辑，避免重复跳转）
+const requireAuth = (to, from, next) => {
+  const token = localStorage.getItem('token')
+  // 有Token → 正常跳转；无Token → 跳登录页（并记录当前路径，登录后返回）
+  if (token) {
+    next()
+  } else {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+  }
+}
 
 const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: Login,
-    meta: { requiresGuest: true }
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: Register,
-    meta: { requiresGuest: true }
+    component: LoginPage,
+    // 新增：登录页只允许未登录访问，避免重复登录
+    beforeEnter: (to, from, next) => {
+      const token = localStorage.getItem('token')
+      token ? next('/dashboard') : next()
+    }
   },
   {
     path: '/',
-    name: 'NoteList',
-    component: NoteList,
-    meta: { requiresAuth: true }
+    component: MainLayout,
+    redirect: '/dashboard',
+    beforeEnter: requireAuth, // 父路由统一校验登录
+    children: [
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: DashboardPage
+      },
+      {
+        path: 'user',
+        name: 'User',
+        component: UserManagement
+      },
+      {
+        path: 'note',
+        name: 'Note',
+        component: NoteManagement
+      }
+    ]
   },
+  // 新增：404页面（匹配不存在的路由）
   {
-    path: '/notes',
-    redirect: '/',
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/:id',
-    name: 'NoteDetail',
-    component: NoteDetail,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/create',
-    name: 'NoteTypeSelect',
-    component: NoteTypeSelect,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/create/:type',
-    name: 'NoteCreate',
-    component: NoteCreate,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/:id/edit',
-    name: 'NoteEdit',
-    component: NoteEdit,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/:id/history',
-    name: 'NoteHistory',
-    component: NoteHistory,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/:id/versions/:versionId',
-    name: 'NoteVersionDetail',
-    component: NoteVersionDetail,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/notes/:id/share',
-    name: 'NoteShare',
-    component: NoteShare,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/categories',
-    name: 'CategoryManager',
-    component: CategoryManager,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/tags',
-    name: 'TagManager',
-    component: TagManager,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/admin',
-    name: 'AdminPanel',
-    component: AdminPanel,
-    meta: { requiresAuth: true, requiresAdmin: true }
+    path: '/:pathMatch(.*)*',
+    redirect: '/dashboard'
   }
 ]
 
-// Export routes
-export default routes
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
 
-// Navigation guard function
-export function setupNavigationGuard(router) {
-  router.beforeEach((to, from, next) => {
-    const userStore = useUserStore()
-    
-    if (to.matched.some(record => record.meta.requiresAuth)) {
-      if (!userStore.isAuthenticated) {
-        next({ name: 'Login' })
-      } else {
-        if (to.matched.some(record => record.meta.requiresAdmin) && !userStore.user?.is_admin) {
-          next({ name: 'NoteList' })
-        } else {
-          next()
-        }
-      }
-    } else if (to.matched.some(record => record.meta.requiresGuest)) {
-      if (userStore.isAuthenticated) {
-        next({ name: 'NoteList' })
-      } else {
-        next()
-      }
-    } else {
-      next()
-    }
-  })
-}
+export default router
