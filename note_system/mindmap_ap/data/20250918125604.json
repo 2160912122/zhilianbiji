@@ -1,0 +1,70 @@
+{
+  "id": 1,
+  "text": "中心主题",
+  "x": 400,
+  "y": 300,
+  "style": "default",
+  "lineStyle": "solid",
+  "children": [
+    {
+      "id": 2,
+      "text": "主题一",
+      "x": 600,
+      "y": 200,
+      "style": "blue",
+      "lineStyle": "solid",
+      "children": [
+        {
+          "id": 5,
+          "text": "子主题1",
+          "x": 800,
+          "y": 150,
+          "style": "default",
+          "lineStyle": "solid"
+        },
+        {
+          "id": 6,
+          "text": "子主题2",
+          "x": 800,
+          "y": 250,
+          "style": "default",
+          "lineStyle": "solid"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "text": "主题二",
+      "x": 600,
+      "y": 300,
+      "style": "green",
+      "lineStyle": "solid",
+      "children": [
+        {
+          "id": 7,
+          "text": "子主题A",
+          "x": 800,
+          "y": 250,
+          "style": "default",
+          "lineStyle": "solid"
+        },
+        {
+          "id": 8,
+          "text": "子主题B",
+          "x": 800,
+          "y": 350,
+          "style": "default",
+          "lineStyle": "dashed"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "text": "主题三",
+      "x": 600,
+      "y": 400,
+      "style": "yellow",
+      "lineStyle": "solid"
+    }
+  ]
+}
