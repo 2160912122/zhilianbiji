@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>智联笔记 - 管理员登录</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei"}
+        body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%)}
+        .login-box{background:#fff;padding:40px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);width:400px}
+        .login-box h2{text-align:center;margin-bottom:30px;color:#333;font-weight:500}
+        .form-group{margin-bottom:20px}
+        .form-group label{display:block;margin-bottom:8px;color:#555;font-size:14px}
+        .form-group input{width:100%;padding:12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px;transition:border-color .3s}
+        .form-group input:focus{outline:none;border-color:#409eff}
+        .login-btn{width:100%;padding:12px;background:#409eff;color:#fff;border:none;border-radius:6px;font-size:16px;cursor:pointer;transition:background .3s}
+        .login-btn:hover{background:#66b1ff}
+        .login-btn:disabled{background:#a0cfff;cursor:not-allowed}
+        .alert{background:#fef0f0;color:#f56c6c;padding:10px;border-radius:4px;margin-bottom:20px;font-size:14px;display:none}
+        .back-link{text-align:center;margin-top:20px}
+        .back-link a{color:#409eff;text-decoration:none;font-size:14px}
+        .back-link a:hover{text-decoration:underline}
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>🧠 智联笔记 - 管理员登录</h2>
+        <div class="alert" id="alert"></div>
+        <div class="form-group">
+            <label>管理员账号</label>
+            <input type="text" id="username" placeholder="请输入管理员账号">
+        </div>
+        <div class="form-group">
+            <label>密码</label>
+            <input type="password" id="password" placeholder="请输入密码">
+        </div>
+        <button class="login-btn" onclick="login()">登录</button>
+        <div class="back-link">
+            <a href="/login.html">← 返回用户登录</a>
+        </div>
+    </div>
+
+    <script>
+        function showAlert(msg, type = 'error') {
+            const alert = document.getElementById('alert');
+            alert.textContent = msg;
+            alert.style.display = 'block';
+            alert.style.background = type === 'error' ? '#fef0f0' : '#f0f9ff';
+            alert.style.color = type === 'error' ? '#f56c6c' : '#409eff';
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.querySelector('.login-btn');
+
+            if (!username || !password) {
+                return showAlert('请输入管理员账号和密码');
+            }
+
+            btn.disabled = true;
+            btn.textContent = '登录中...';
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    showAlert('登录成功，正在跳转...', 'success');
+                    setTimeout(() => {
+                        location.href = '/admin/index.html';
+                    }, 1000);
+                } else {
+                    showAlert(data.msg);
+                }
+            } catch (error) {
+                showAlert('网络错误，请重试');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '登录';
+            }
+        }
+
+        // 回车登录
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>
