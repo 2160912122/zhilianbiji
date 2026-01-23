@@ -3,14 +3,14 @@ import request from '@/utils/request'
 export const categoryAPI = {
   getList() {
     return request({
-      url: '/categories',
+      url: '/api/categories',
       method: 'get'
     })
   },
   
   create(data) {
     return request({
-      url: '/categories',
+      url: '/api/categories',
       method: 'post',
       data
     })
@@ -18,7 +18,7 @@ export const categoryAPI = {
   
   update(id, data) {
     return request({
-      url: `/categories/${id}`,
+      url: `/api/categories/${id}`,
       method: 'put',
       data
     })
@@ -26,7 +26,7 @@ export const categoryAPI = {
   
   delete(id) {
     return request({
-      url: `/categories/${id}`,
+      url: `/api/categories/${id}`,
       method: 'delete'
     })
   }
@@ -35,14 +35,14 @@ export const categoryAPI = {
 export const tagAPI = {
   getList() {
     return request({
-      url: '/tags',
+      url: '/api/tags',
       method: 'get'
     })
   },
   
   create(data) {
     return request({
-      url: '/tags',
+      url: '/api/tags',
       method: 'post',
       data
     })
@@ -50,7 +50,7 @@ export const tagAPI = {
   
   delete(id) {
     return request({
-      url: `/tags/${id}`,
+      url: `/api/tags/${id}`,
       method: 'delete'
     })
   }

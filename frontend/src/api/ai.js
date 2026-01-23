@@ -3,7 +3,7 @@ import request from '@/utils/request'
 export const aiAPI = {
   generate(topic) {
     return request({
-      url: '/ai/generate',
+      url: '/api/ai/generate',
       method: 'post',
       data: { topic }
     })
@@ -11,7 +11,7 @@ export const aiAPI = {
   
   summarize(content) {
     return request({
-      url: '/ai/summarize',
+      url: '/api/ai/summarize',
       method: 'post',
       data: { content }
     })
@@ -19,7 +19,7 @@ export const aiAPI = {
   
   suggestTags(content) {
     return request({
-      url: '/ai/suggest_tags',
+      url: '/api/ai/suggest_tags',
       method: 'post',
       data: { content }
     })
@@ -29,28 +29,28 @@ export const aiAPI = {
 export const adminAPI = {
   getStats() {
     return request({
-      url: '/admin/stats',
+      url: '/api/admin/stats',
       method: 'get'
     })
   },
   
   getUsers() {
     return request({
-      url: '/admin/users',
+      url: '/api/admin/users',
       method: 'get'
     })
   },
   
   deleteUser(id) {
     return request({
-      url: `/admin/users/${id}`,
+      url: `/api/admin/users/${id}`,
       method: 'delete'
     })
   },
   
   setAdmin(id) {
     return request({
-      url: `/admin/set_admin/${id}`,
+      url: `/api/admin/set_admin/${id}`,
       method: 'post'
     })
   }

@@ -3,7 +3,7 @@ import request from '@/utils/request'
 export const authAPI = {
   login(data) {
     return request({
-      url: '/login',
+      url: '/api/login',
       method: 'post',
       data
     })
@@ -11,7 +11,7 @@ export const authAPI = {
   
   register(data) {
     return request({
-      url: '/register',
+      url: '/api/register',
       method: 'post',
       data
     })
@@ -19,21 +19,21 @@ export const authAPI = {
   
   logout() {
     return request({
-      url: '/logout',
+      url: '/api/logout',
       method: 'post'
     })
   },
   
   getCurrentUser() {
     return request({
-      url: '/user',
+      url: '/api/user',
       method: 'get'
     })
   },
   
   updateUser(data) {
     return request({
-      url: '/user',
+      url: '/api/user',
       method: 'put',
       data
     })

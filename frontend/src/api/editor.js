@@ -3,14 +3,14 @@ import request from '@/utils/request'
 export const tableAPI = {
   getList() {
     return request({
-      url: '/tables',
+      url: '/api/tables',
       method: 'get'
     })
   },
   
   create(data) {
     return request({
-      url: '/tables',
+      url: '/api/tables',
       method: 'post',
       data
     })
@@ -18,14 +18,14 @@ export const tableAPI = {
   
   get(id) {
     return request({
-      url: `/tables/${id}`,
+      url: `/api/tables/${id}`,
       method: 'get'
     })
   },
   
   update(id, data) {
     return request({
-      url: `/tables/${id}`,
+      url: `/api/tables/${id}`,
       method: 'put',
       data
     })
@@ -33,21 +33,21 @@ export const tableAPI = {
   
   delete(id) {
     return request({
-      url: `/tables/${id}`,
+      url: `/api/tables/${id}`,
       method: 'delete'
     })
   },
   
   getVersions(id) {
     return request({
-      url: `/tables/${id}/versions`,
+      url: `/api/tables/${id}/versions`,
       method: 'get'
     })
   },
   
   rollbackVersion(id, versionId) {
     return request({
-      url: `/tables/${id}/versions/${versionId}`,
+      url: `/api/tables/${id}/versions/${versionId}`,
       method: 'post'
     })
   }
@@ -56,14 +56,14 @@ export const tableAPI = {
 export const whiteboardAPI = {
   getList() {
     return request({
-      url: '/whiteboards',
+      url: '/api/whiteboards',
       method: 'get'
     })
   },
   
   create(data) {
     return request({
-      url: '/whiteboards',
+      url: '/api/whiteboards',
       method: 'post',
       data
     })
@@ -71,14 +71,14 @@ export const whiteboardAPI = {
   
   get(id) {
     return request({
-      url: `/whiteboards/${id}`,
+      url: `/api/whiteboards/${id}`,
       method: 'get'
     })
   },
   
   update(id, data) {
     return request({
-      url: `/whiteboards/${id}`,
+      url: `/api/whiteboards/${id}`,
       method: 'put',
       data
     })
@@ -86,21 +86,21 @@ export const whiteboardAPI = {
   
   delete(id) {
     return request({
-      url: `/whiteboards/${id}`,
+      url: `/api/whiteboards/${id}`,
       method: 'delete'
     })
   },
   
   getVersions(id) {
     return request({
-      url: `/whiteboards/${id}/versions`,
+      url: `/api/whiteboards/${id}/versions`,
       method: 'get'
     })
   },
   
   rollbackVersion(id, versionId) {
     return request({
-      url: `/whiteboards/${id}/versions/${versionId}`,
+      url: `/api/whiteboards/${id}/versions/${versionId}`,
       method: 'post'
     })
   }
@@ -109,14 +109,14 @@ export const whiteboardAPI = {
 export const mindmapAPI = {
   getList() {
     return request({
-      url: '/mindmaps',
+      url: '/api/mindmaps',
       method: 'get'
     })
   },
   
   create(data) {
     return request({
-      url: '/mindmaps',
+      url: '/api/mindmaps',
       method: 'post',
       data
     })
@@ -124,14 +124,14 @@ export const mindmapAPI = {
   
   get(id) {
     return request({
-      url: `/mindmaps/${id}`,
+      url: `/api/mindmaps/${id}`,
       method: 'get'
     })
   },
   
   update(id, data) {
     return request({
-      url: `/mindmaps/${id}`,
+      url: `/api/mindmaps/${id}`,
       method: 'put',
       data
     })
@@ -139,21 +139,21 @@ export const mindmapAPI = {
   
   delete(id) {
     return request({
-      url: `/mindmaps/${id}`,
+      url: `/api/mindmaps/${id}`,
       method: 'delete'
     })
   },
   
   getVersions(id) {
     return request({
-      url: `/mindmaps/${id}/versions`,
+      url: `/api/mindmaps/${id}/versions`,
       method: 'get'
     })
   },
   
   rollbackVersion(id, versionId) {
     return request({
-      url: `/mindmaps/${id}/versions/${versionId}`,
+      url: `/api/mindmaps/${id}/versions/${versionId}`,
       method: 'post'
     })
   }
@@ -162,7 +162,7 @@ export const mindmapAPI = {
 export const flowchartAPI = {
   getList(params) {
     return request({
-      url: '/flowcharts',
+      url: '/api/flowcharts',
       method: 'get',
       params
     })
@@ -170,7 +170,7 @@ export const flowchartAPI = {
   
   create(data) {
     return request({
-      url: '/flowcharts',
+      url: '/api/flowcharts',
       method: 'post',
       data
     })
@@ -178,14 +178,14 @@ export const flowchartAPI = {
   
   get(id) {
     return request({
-      url: `/flowcharts/${id}`,
+      url: `/api/flowcharts/${id}`,
       method: 'get'
     })
   },
   
   update(id, data) {
     return request({
-      url: `/flowcharts/${id}`,
+      url: `/api/flowcharts/${id}`,
       method: 'put',
       data
     })
@@ -193,21 +193,21 @@ export const flowchartAPI = {
   
   delete(id) {
     return request({
-      url: `/flowcharts/${id}`,
+      url: `/api/flowcharts/${id}`,
       method: 'delete'
     })
   },
   
   duplicate(id) {
     return request({
-      url: `/flowcharts/${id}/duplicate`,
+      url: `/api/flowcharts/${id}/duplicate`,
       method: 'post'
     })
   },
   
   share(id, data) {
     return request({
-      url: `/flowcharts/${id}/share`,
+      url: `/api/flowcharts/${id}/share`,
       method: 'post',
       data
     })

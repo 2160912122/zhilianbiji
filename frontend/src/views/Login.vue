@@ -1,157 +1,120 @@
 <template>
   <div class="login-container">
-    <div class="login-box">
-      <div class="login-header">
-        <h1>智联笔记</h1>
-        <p>智能笔记系统</p>
-      </div>
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        class="login-form"
-        @submit.prevent="handleLogin"
-      >
-        <el-form-item prop="username">
-          <el-input
-            v-model="form.username"
-            placeholder="请输入用户名"
-            size="large"
-            prefix-icon="User"
-          />
+    <el-card class="login-card">
+      <h2 class="login-title">登录</h2>
+      <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="80px">
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
         </el-form-item>
-        <el-form-item prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            size="large"
-            prefix-icon="Lock"
-            show-password
-            @keyup.enter="handleLogin"
-          />
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"></el-input>
         </el-form-item>
         <el-form-item>
-          <el-button
-            type="primary"
-            size="large"
-            :loading="loading"
-            style="width: 100%"
-            @click="handleLogin"
-          >
-            登录
-          </el-button>
+          <el-button type="primary" @click="handleLogin" class="login-btn">登录</el-button>
+          <el-button @click="goToRegister" type="text">没有账号？去注册</el-button>
         </el-form-item>
       </el-form>
-      <div class="login-footer">
-        <span>还没有账号？</span>
-        <router-link to="/register">立即注册</router-link>
-      </div>
-    </div>
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/user'
-import { ElMessage } from 'element-plus'
 
+// 初始化路由和Store
 const router = useRouter()
-const route = useRoute()
 const userStore = useUserStore()
 
-const formRef = ref(null)
-const loading = ref(false)
-
-const form = reactive({
+// 表单相关
+const loginFormRef = ref(null)
+const loginForm = ref({
   username: '',
   password: ''
 })
 
-const rules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, message: '用户名至少3个字符', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码至少6个字符', trigger: 'blur' }
-  ]
-}
+// 表单校验规则
+const loginRules = ref({
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+})
 
-async function handleLogin() {
-  if (!formRef.value) return
-  
+// 核心：防闪退的登录逻辑（异步+延迟跳转+只走Vue Router）
+const handleLogin = async () => {
+  // 1. 先校验表单
+  if (!loginFormRef.value) return
   try {
-    await formRef.value.validate()
-    loading.value = true
-    
-    await userStore.login(form)
-    
-    ElMessage.success('登录成功')
-    
-    const redirect = route.query.redirect || '/dashboard'
-    router.push(redirect)
+    await loginFormRef.value.validate()
   } catch (error) {
-    console.error('Login error:', error)
-  } finally {
-    loading.value = false
+    ElMessage.error('请完善登录信息')
+    return
+  }
+
+  // 2. 异步登录，确保token存到localStorage
+  try {
+    // 等待登录接口返回，确保token已存储
+    const res = await userStore.login({
+      username: loginForm.value.username,
+      password: loginForm.value.password
+    })
+
+    // 3. 登录成功提示（必加，延迟跳转）
+    ElMessage.success('登录成功！')
+
+    // 4. 延迟300ms跳转（关键！等localStorage完全同步）
+    // 只走Vue Router跳转，绝对不用window.location.href
+    setTimeout(() => {
+      router.push('/dashboard').catch(err => {
+        console.log('跳转dashboard失败，兜底跳首页', err)
+        router.push('/').catch(() => {})
+      })
+    }, 300)
+
+  } catch (error) {
+    // 登录失败提示，不删token
+    ElMessage.error(error.message || '登录失败，请检查账号密码')
+    console.error('登录失败详情：', error)
   }
 }
+
+// 跳注册页（同样用Vue Router）
+const goToRegister = () => {
+  router.push('/register').catch(() => {})
+}
+
+// 挂载时检测：如果已有token，直接跳dashboard（防重复登录）
+onMounted(() => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    ElMessage.info('已检测到登录状态，自动跳转到首页')
+    setTimeout(() => {
+      router.push('/dashboard').catch(() => {})
+    }, 500)
+  }
+})
 </script>
 
 <style scoped>
 .login-container {
-  min-height: 100vh;
   display: flex;
-  align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  align-items: center;
+  height: 100vh;
+  background-color: #f5f5f5;
 }
-
-.login-box {
+.login-card {
   width: 400px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 }
-
-.login-header {
+.login-title {
   text-align: center;
-  margin-bottom: 30px;
-}
-
-.login-header h1 {
-  margin: 0 0 10px;
-  font-size: 28px;
-  color: #333;
-}
-
-.login-header p {
-  margin: 0;
-  font-size: 14px;
-  color: #999;
-}
-
-.login-form {
   margin-bottom: 20px;
+  color: #1989fa;
 }
-
-.login-footer {
-  text-align: center;
-  font-size: 14px;
-  color: #666;
-}
-
-.login-footer a {
-  color: #409eff;
-  text-decoration: none;
-  margin-left: 5px;
-}
-
-.login-footer a:hover {
-  text-decoration: underline;
+.login-btn {
+  width: 100%;
 }
 </style>

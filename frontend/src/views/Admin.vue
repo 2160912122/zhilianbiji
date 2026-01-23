@@ -1,168 +1,86 @@
 <template>
   <div class="admin-page">
+    <h2 class="page-title">工作台</h2>
+    
+    <!-- 顶部统计卡片 -->
+    <el-row :gutter="20" style="margin-bottom: 20px">
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.total_users || 0 }}</div>
+            <div class="stat-label">总用户数</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.today_new_users || 0 }}</div>
+            <div class="stat-label">今日新增用户</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.total_notes || 0 }}</div>
+            <div class="stat-label">总笔记数</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.total_views || 0 }}</div>
+            <div class="stat-label">总访问量</div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+    
+    <!-- 图表区域 -->
+    <el-row :gutter="20" style="margin-bottom: 20px">
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>笔记类型分布</span>
+            </div>
+          </template>
+          <div class="chart-area">
+            <div ref="noteTypeChart" class="chart-container"></div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>近期用户增长</span>
+            </div>
+          </template>
+          <div class="chart-area">
+            <div ref="userGrowthChart" class="chart-container"></div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+    
+    <!-- 快速操作 -->
     <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#409eff"><User /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_users || 0 }}</div>
-              <div class="stat-label">总用户数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#67c23a"><Document /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_documents || 0 }}</div>
-              <div class="stat-label">总文档数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#e6a23c"><FolderOpened /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_categories || 0 }}</div>
-              <div class="stat-label">总分类数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#f56c6c"><PriceTag /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_tags || 0 }}</div>
-              <div class="stat-label">总标签数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#409eff"><Document /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_notes || 0 }}</div>
-              <div class="stat-label">笔记</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#67c23a"><Connection /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_mindmaps || 0 }}</div>
-              <div class="stat-label">脑图</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#e6a23c"><Share /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_flowcharts || 0 }}</div>
-              <div class="stat-label">流程图</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#f56c6c"><Grid /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_tables || 0 }}</div>
-              <div class="stat-label">表格</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#909399"><EditPen /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_whiteboards || 0 }}</div>
-              <div class="stat-label">白板</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon" color="#409eff"><Share /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.total_shares || 0 }}</div>
-              <div class="stat-label">分享数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="24">
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>用户管理</span>
+              <span>快速操作</span>
             </div>
           </template>
-          
-          <el-table :data="users" style="width: 100%">
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="username" label="用户名" min-width="150" />
-            <el-table-column prop="email" label="邮箱" min-width="200" />
-            <el-table-column prop="is_admin" label="管理员" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.is_admin ? 'success' : 'info'">
-                  {{ row.is_admin ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="note_count" label="笔记数" width="100" />
-            <el-table-column prop="created_at" label="创建时间" width="180">
-              <template #default="{ row }">
-                {{ formatDate(row.created_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <el-button
-                  link
-                  type="primary"
-                  @click="toggleAdmin(row)"
-                  :disabled="row.id === 1"
-                >
-                  {{ row.is_admin ? '取消管理员' : '设为管理员' }}
-                </el-button>
-                <el-button
-                  link
-                  type="danger"
-                  @click="deleteUser(row.id)"
-                  :disabled="row.is_admin"
-                >
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="quick-actions">
+            <el-button type="primary" @click="handleUserManage">用户管理</el-button>
+            <el-button type="success" @click="handleNoteManage">笔记管理</el-button>
+            <el-button type="info" @click="handleExportData">导出数据</el-button>
+            <el-button type="warning" @click="loadStats">刷新数据</el-button>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -170,129 +88,315 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { adminAPI } from '@/api/ai'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted, getCurrentInstance, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
+import * as echarts from 'echarts'
 
+// 全局挂载的request请求工具
+const { proxy } = getCurrentInstance()
+const request = proxy.$request
+
+// 初始化统计数据
 const stats = ref({
   total_users: 0,
+  today_new_users: 0,
   total_notes: 0,
-  total_categories: 0,
-  total_tags: 0
+  total_views: 0
 })
 
-const users = ref([])
+// 图表引用
+const noteTypeChart = ref(null)
+const userGrowthChart = ref(null)
+const noteTypeChartInstance = ref(null)
+const userGrowthChartInstance = ref(null)
 
+// 加载统计数据
 async function loadStats() {
   try {
-    stats.value = await adminAPI.getStats()
+    const res = await request.get('/api/admin/dashboard/stats')
+    // 处理后端返回的数据格式
+    let statsData = res
+    if (res.code === 200 && res.data) {
+      statsData = res.data
+    }
+    console.log('统计数据:', statsData)
+    stats.value = {
+      total_users: statsData.userCount || 0,
+      today_new_users: statsData.todayUsers || 0,
+      total_notes: statsData.totalNotes || 0,
+      total_views: 0
+    }
+    
+    // 更新笔记类型分布图表
+    if (noteTypeChartInstance.value) {
+      const noteTypeData = [
+        { value: statsData.totalNotes || 0, name: '普通笔记' },
+        { value: statsData.totalTables || 0, name: '表格' },
+        { value: statsData.totalWhiteboards || 0, name: '白板' },
+        { value: statsData.totalMindmaps || 0, name: '脑图' },
+        { value: statsData.totalFlowcharts || 0, name: '流程图' }
+      ]
+      noteTypeChartInstance.value.setOption({
+        series: [{
+          name: '笔记类型',
+          type: 'pie',
+          radius: '70%',
+          data: noteTypeData,
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+          }
+        }]
+      })
+    }
+    
+    // 更新用户增长图表
+    if (userGrowthChartInstance.value && statsData.recentUserGrowth) {
+      userGrowthChartInstance.value.setOption({
+        series: [{
+          data: statsData.recentUserGrowth
+        }]
+      })
+    }
   } catch (error) {
     console.error('Load stats error:', error)
+    ElMessage.error('加载统计数据失败，请重试')
   }
 }
 
-async function loadUsers() {
-  try {
-    users.value = await adminAPI.getUsers()
-  } catch (error) {
-    console.error('Load users error:', error)
-  }
+// 处理用户管理
+function handleUserManage() {
+  // 跳转到用户管理页面
+  proxy.$router.push('/admin/user-manage')
 }
 
-async function toggleAdmin(user) {
+// 处理笔记管理
+function handleNoteManage() {
+  // 跳转到笔记管理页面
+  proxy.$router.push('/notes')
+}
+
+// 处理导出数据
+function handleExportData() {
+  ElMessage.info('导出数据功能开发中')
+}
+
+// 初始化笔记类型分布图表
+function initNoteTypeChart() {
+  if (!noteTypeChart.value) return
+  
+  noteTypeChartInstance.value = echarts.init(noteTypeChart.value)
+  
+  const option = {
+    title: {
+      text: '笔记类型分布',
+      left: 'center'
+    },
+    tooltip: {
+      trigger: 'item'
+    },
+    legend: {
+      orient: 'vertical',
+      left: 'left'
+    },
+    series: [
+      {
+        name: '笔记类型',
+        type: 'pie',
+        radius: '70%',
+        data: [
+          { value: 0, name: '普通笔记' },
+          { value: 0, name: '表格' },
+          { value: 0, name: '白板' },
+          { value: 0, name: '脑图' },
+          { value: 0, name: '流程图' }
+        ],
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)'
+          }
+        }
+      }
+    ]
+  }
+  
+  noteTypeChartInstance.value.setOption(option)
+}
+
+// 初始化用户增长图表
+function initUserGrowthChart() {
+  if (!userGrowthChart.value) return
+  
+  userGrowthChartInstance.value = echarts.init(userGrowthChart.value)
+  
+  // 生成最近7天的日期
+  const dates = []
+  const today = new Date()
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today)
+    date.setDate(today.getDate() - i)
+    dates.push(`${date.getMonth() + 1}/${date.getDate()}`)
+  }
+  
+  const option = {
+    title: {
+      text: '近期用户增长',
+      left: 'center'
+    },
+    tooltip: {
+      trigger: 'axis'
+    },
+    xAxis: {
+      type: 'category',
+      data: dates
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [
+      {
+        data: [0, 0, 0, 0, 0, 0, 0],
+        type: 'line',
+        smooth: true,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            {
+              offset: 0,
+              color: 'rgba(64, 158, 255, 0.5)'
+            },
+            {
+              offset: 1,
+              color: 'rgba(64, 158, 255, 0.1)'
+            }
+          ])
+        }
+      }
+    ]
+  }
+  
+  userGrowthChartInstance.value.setOption(option)
+}
+
+// 页面挂载时加载数据
+onMounted(async () => {
+  // 二次校验：确保只有管理员能访问此页面
+  let isAdmin = false
   try {
-    const action = user.is_admin ? '取消管理员' : '设为管理员'
-    await ElMessageBox.confirm(`确定要${action}这个用户吗？`, '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
+    // 从localStorage检查，支持多种格式
+    const storedIsAdmin = localStorage.getItem('is_admin')
+    isAdmin = storedIsAdmin === '1' || storedIsAdmin === 1 || storedIsAdmin === true
     
-    await adminAPI.setAdmin(user.id)
-    ElMessage.success('设置成功')
-    loadUsers()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('Toggle admin error:', error)
-      ElMessage.error('设置失败')
+    // 额外从user对象检查
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      if (user.is_admin === 1 || user.is_admin === true) {
+        isAdmin = true
+      }
     }
+  } catch (e) {
+    isAdmin = false
   }
-}
-
-async function deleteUser(userId) {
-  try {
-    await ElMessageBox.confirm('确定要删除这个用户吗？此操作不可恢复。', '警告', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    
-    await adminAPI.deleteUser(userId)
-    ElMessage.success('删除成功')
-    loadUsers()
-    loadStats()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('Delete user error:', error)
-      ElMessage.error('删除失败')
-    }
+  
+  if (!isAdmin) {
+    ElMessage.error('无管理员权限，即将返回登录页')
+    setTimeout(() => {
+      window.location.href = '/login'
+    }, 1500)
+    return
   }
-}
 
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString('zh-CN')
-}
-
-onMounted(() => {
-  loadStats()
-  loadUsers()
+  // 初始化图表
+  await nextTick()
+  initNoteTypeChart()
+  initUserGrowthChart()
+  
+  // 加载数据
+  await loadStats()
+  
+  // 监听窗口大小变化
+  window.addEventListener('resize', () => {
+    noteTypeChartInstance.value?.resize()
+    userGrowthChartInstance.value?.resize()
+  })
 })
 </script>
 
 <style scoped>
 .admin-page {
   padding: 20px;
+  background-color: #f5f7fa;
+  min-height: 100vh;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: #303133;
 }
 
 .stat-card {
-  cursor: pointer;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s;
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-2px);
 }
 
 .stat-content {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.stat-icon {
-  font-size: 48px;
-}
-
-.stat-info {
-  flex: 1;
+  text-align: center;
+  padding: 20px 0;
 }
 
 .stat-value {
   font-size: 32px;
   font-weight: bold;
-  color: #333;
+  color: #409eff;
+  margin-bottom: 8px;
 }
 
 .stat-label {
   font-size: 14px;
-  color: #999;
-  margin-top: 5px;
+  color: #909399;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.chart-area {
+  height: 300px;
+  background-color: #fafafa;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.chart-container {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-placeholder {
+  color: #909399;
+  font-size: 16px;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
 }
 </style>

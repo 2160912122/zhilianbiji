@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/store/user'
 
 const routes = [
   {
@@ -19,10 +18,7 @@ const routes = [
     component: () => import('@/layout/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
-      {
-        path: '',
-        redirect: '/dashboard'
-      },
+      { path: '', redirect: '/dashboard' },
       {
         path: 'dashboard',
         name: 'Dashboard',
@@ -35,15 +31,14 @@ const routes = [
       },
       {
         path: 'notes/new',
-        name: 'NoteCreate',
+        name: 'NoteNew',
         component: () => import('@/views/NoteEditor.vue'),
         props: { isNew: true }
       },
       {
         path: 'notes/:id',
         name: 'NoteEdit',
-        component: () => import('@/views/NoteEditor.vue'),
-        props: { isNew: false }
+        component: () => import('@/views/NoteEditor.vue')
       },
       {
         path: 'tables',
@@ -52,15 +47,14 @@ const routes = [
       },
       {
         path: 'tables/new',
-        name: 'TableCreate',
+        name: 'TableNew',
         component: () => import('@/views/TableEditor.vue'),
         props: { isNew: true }
       },
       {
         path: 'tables/:id',
         name: 'TableEdit',
-        component: () => import('@/views/TableEditor.vue'),
-        props: { isNew: false }
+        component: () => import('@/views/TableEditor.vue')
       },
       {
         path: 'whiteboards',
@@ -69,15 +63,14 @@ const routes = [
       },
       {
         path: 'whiteboards/new',
-        name: 'WhiteboardCreate',
+        name: 'WhiteboardNew',
         component: () => import('@/views/WhiteboardEditor.vue'),
         props: { isNew: true }
       },
       {
         path: 'whiteboards/:id',
         name: 'WhiteboardEdit',
-        component: () => import('@/views/WhiteboardEditor.vue'),
-        props: { isNew: false }
+        component: () => import('@/views/WhiteboardEditor.vue')
       },
       {
         path: 'mindmaps',
@@ -86,15 +79,14 @@ const routes = [
       },
       {
         path: 'mindmaps/new',
-        name: 'MindmapCreate',
+        name: 'MindmapNew',
         component: () => import('@/views/MindmapEditor.vue'),
         props: { isNew: true }
       },
       {
         path: 'mindmaps/:id',
         name: 'MindmapEdit',
-        component: () => import('@/views/MindmapEditor.vue'),
-        props: { isNew: false }
+        component: () => import('@/views/MindmapEditor.vue')
       },
       {
         path: 'flowcharts',
@@ -103,37 +95,46 @@ const routes = [
       },
       {
         path: 'flowcharts/new',
-        name: 'FlowchartCreate',
+        name: 'FlowchartNew',
         component: () => import('@/views/FlowchartEditor.vue'),
         props: { isNew: true }
       },
       {
         path: 'flowcharts/:id',
         name: 'FlowchartEdit',
-        component: () => import('@/views/FlowchartEditor.vue'),
-        props: { isNew: false }
+        component: () => import('@/views/FlowchartEditor.vue')
       },
       {
         path: 'categories',
         name: 'Categories',
-        component: () => import('@/views/Categories.vue')
+        component: () => import('@/views/Categories.vue'),
+        meta: { requiresAdmin: true }
       },
       {
         path: 'tags',
         name: 'Tags',
-        component: () => import('@/views/Tags.vue')
+        component: () => import('@/views/Tags.vue'),
+        meta: { requiresAdmin: true }
       },
       {
         path: 'admin',
         name: 'Admin',
         component: () => import('@/views/Admin.vue'),
         meta: { requiresAdmin: true }
+      },
+      {
+        path: 'admin/user-manage',
+        name: 'UserManage',
+        component: () => import('@/views/UserManage.vue'),
+        meta: { requiresAdmin: true }
       }
+
     ]
   },
+  // 404重定向简化，避免任何读取异常
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/dashboard'
+    redirect: '/login'
   }
 ]
 
@@ -142,25 +143,57 @@ const router = createRouter({
   routes
 })
 
+// 极简拦截器：只保留必要逻辑，杜绝冲突
 router.beforeEach((to, from, next) => {
-  const userStore = useUserStore()
-  const token = localStorage.getItem('token')
-
-  if (to.meta.requiresAuth && !token) {
-    next({ path: '/login', query: { redirect: to.fullPath } })
-  } else if (to.meta.requiresGuest && token) {
-    next('/dashboard')
-  } else if (to.meta.requiresAdmin) {
-    if (!token) {
-      next({ path: '/login', query: { redirect: to.fullPath } })
-    } else if (!userStore.user?.is_admin) {
-      next('/dashboard')
-    } else {
-      next()
+    // 强制容错：防止localStorage读取失败
+    let token = ''
+    try {
+      token = localStorage.getItem('token') || ''
+    } catch (e) {
+      token = ''
     }
-  } else {
+
+    // 1. 访问登录/注册页：如果有token，直接跳dashboard
+    if (to.meta.requiresGuest && token) {
+      next('/dashboard')
+      return
+    }
+
+    // 2. 访问需要权限的页面：没token才跳登录
+    if (to.meta.requiresAuth && !token) {
+      next('/login')
+      return
+    }
+
+    // 3. 访问需要管理员权限的页面：非管理员跳dashboard
+    if (to.meta.requiresAdmin && token) {
+      let isAdmin = false
+      try {
+        // 从localStorage检查，支持多种格式
+        const storedIsAdmin = localStorage.getItem('is_admin')
+        isAdmin = storedIsAdmin === '1' || storedIsAdmin === 1 || storedIsAdmin === true
+        
+        // 额外从user对象检查
+        const userStr = localStorage.getItem('user')
+        if (userStr) {
+          const user = JSON.parse(userStr)
+          if (user.is_admin === 1 || user.is_admin === true) {
+            isAdmin = true
+          }
+        }
+      } catch (e) {
+        isAdmin = false
+      }
+      
+      if (!isAdmin) {
+        alert('无管理员权限')
+        next('/dashboard')
+        return
+      }
+    }
+
+    // 所有情况都放行
     next()
-  }
-})
+  })
 
 export default router

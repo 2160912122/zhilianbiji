@@ -3,7 +3,7 @@ import request from '@/utils/request'
 export const noteAPI = {
   getList(params) {
     return request({
-      url: '/notes',
+      url: '/api/notes',
       method: 'get',
       params
     })
@@ -11,7 +11,7 @@ export const noteAPI = {
   
   create(data) {
     return request({
-      url: '/notes',
+      url: '/api/notes',
       method: 'post',
       data
     })
@@ -19,14 +19,14 @@ export const noteAPI = {
   
   get(id) {
     return request({
-      url: `/notes/${id}`,
+      url: `/api/notes/${id}`,
       method: 'get'
     })
   },
   
   update(id, data) {
     return request({
-      url: `/notes/${id}`,
+      url: `/api/notes/${id}`,
       method: 'put',
       data
     })
@@ -34,35 +34,35 @@ export const noteAPI = {
   
   delete(id) {
     return request({
-      url: `/notes/${id}`,
+      url: `/api/notes/${id}`,
       method: 'delete'
     })
   },
   
   getVersions(id) {
     return request({
-      url: `/notes/${id}/versions`,
+      url: `/api/notes/${id}/versions`,
       method: 'get'
     })
   },
   
   saveVersion(id) {
     return request({
-      url: `/notes/${id}/versions`,
+      url: `/api/notes/${id}/versions`,
       method: 'post'
     })
   },
   
   rollbackVersion(noteId, versionId) {
     return request({
-      url: `/notes/${noteId}/versions/${versionId}/rollback`,
+      url: `/api/notes/${noteId}/versions/${versionId}/rollback`,
       method: 'post'
     })
   },
   
   share(id, data) {
     return request({
-      url: `/notes/${id}/share`,
+      url: `/api/notes/${id}/share`,
       method: 'post',
       data
     })
@@ -70,14 +70,14 @@ export const noteAPI = {
   
   getShares(id) {
     return request({
-      url: `/notes/${id}/shares`,
+      url: `/api/notes/${id}/shares`,
       method: 'get'
     })
   },
   
   deleteShare(token) {
     return request({
-      url: `/shares/${token}`,
+      url: `/api/shares/${token}`,
       method: 'delete'
     })
   }
