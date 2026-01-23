@@ -94,13 +94,13 @@ async function loadFlowchart() {
   if (props.isNew) return
   
   try {
-    const response = await request.get(`/flowcharts/${flowchartId}`)
+    const response = await request.get(`/api/flowcharts/${flowchartId}`)
 
-    flowTitle.value = response.title
+    flowTitle.value = response.flowchart.title
     graphData.value = { nodes: {}, edges: {} }
 
-    if (response.flow_data) {
-      graphData.value = JSON.parse(JSON.stringify(response.flow_data))
+    if (response.flowchart.flow_data) {
+      graphData.value = JSON.parse(JSON.stringify(response.flowchart.flow_data))
     }
   } catch (error) {
     console.error('加载流程图失败:', error)
@@ -112,7 +112,7 @@ async function handleTitleChange(newTitle) {
   if (!newTitle) return
 
   try {
-    await request.put(`/flowcharts/${flowchartId}`, {
+    await request.put(`/api/flowcharts/${flowchartId}`, {
       title: newTitle
     })
 
@@ -124,17 +124,25 @@ async function handleTitleChange(newTitle) {
 }
 
 async function handleSaveFlowchart(flowData) {
-  if (!flowchartId) return
-
   try {
     const saveData = {
+      title: flowTitle.value,
       flow_data: {
         nodes: flowData.nodes || {},
         edges: flowData.edges || {}
       }
     }
 
-    await request.put(`/flowcharts/${flowchartId}`, saveData)
+    let response
+    if (flowchartId) {
+      // 更新现有流程图
+      response = await request.put(`/api/flowcharts/${flowchartId}`, saveData)
+    } else {
+      // 创建新流程图
+      response = await request.post('/api/flowcharts', saveData)
+      // 保存成功后，跳转到编辑页面
+      router.push(`/flowcharts/${response.flowchart.id}`)
+    }
 
     ElMessage.success('保存成功')
     return { success: true, message: '保存成功' }
@@ -165,7 +173,7 @@ async function confirmShare() {
 
   sharing.value = true
   try {
-    const response = await request.post(`/flowcharts/${flowchartId}/share`, {
+    const response = await request.post(`/api/flowcharts/${flowchartId}/share`, {
       days: 7
     })
 

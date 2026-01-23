@@ -1,5 +1,19 @@
 <template>
   <div class="dashboard">
+    <!-- 页面标题和刷新按钮 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">仪表盘</h1>
+        <div class="header-actions">
+          <p class="page-desc">欢迎回来，这里是您的个人数据概览</p>
+          <el-button type="primary" @click="loadStats">
+            <el-icon><Refresh /></el-icon>
+            刷新数据
+          </el-button>
+        </div>
+      </div>
+    </div>
+    
     <!-- 通用统计卡片 -->
     <el-row :gutter="20">
       <el-col :span="4">
@@ -122,6 +136,7 @@ import { useRouter } from 'vue-router'
 // 替换为统一的请求工具（不再直接用各API文件，避免重复封装）
 import request from '@/utils/request'
 import { useUserStore } from '@/store/user'
+import { Refresh } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -222,6 +237,40 @@ onMounted(() => {
 <style scoped>
 .dashboard {
   padding: 20px;
+}
+
+/* 页面标题和刷新按钮区域样式 */
+.page-header {
+  margin-bottom: 20px;
+  padding: 20px;
+  background-color: #f5f7fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: #303133;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.page-desc {
+  margin: 0;
+  color: #606266;
+  font-size: 14px;
 }
 
 /* 原有样式保留并优化 */

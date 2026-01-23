@@ -130,7 +130,7 @@ async function loadStats() {
     // 更新笔记类型分布图表
     if (noteTypeChartInstance.value) {
       const noteTypeData = [
-        { value: statsData.totalNotes || 0, name: '普通笔记' },
+        { value: statsData.normalNotes || 0, name: '普通笔记' },
         { value: statsData.totalTables || 0, name: '表格' },
         { value: statsData.totalWhiteboards || 0, name: '白板' },
         { value: statsData.totalMindmaps || 0, name: '脑图' },

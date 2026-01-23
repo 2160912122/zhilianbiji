@@ -1028,9 +1028,12 @@ def create_mindmap():
     existing_titles = [m.title for m in existing_mindmaps]
     unique_title = generate_unique_name(base_title, existing_titles)
 
+    # 兼容前端发送的数据格式
+    mindmap_data = data.get('data', {})
+
     mindmap = Mindmap(
         title=unique_title,
-        nodes_data=data.get('nodes', {'id': 'root', 'text': '中心主题', 'children': []}),
+        data=mindmap_data,
         user_id=user_id
     )
 
@@ -1061,8 +1064,9 @@ def update_mindmap(mindmap_id):
 
     if 'title' in data:
         mindmap.title = data['title']
-    if 'nodes' in data:
-        mindmap.nodes_data = data['nodes']
+    # 兼容前端发送的数据格式
+    if 'data' in data:
+        mindmap.data = data['data']
 
     mindmap.updated_at = datetime.now()
 
@@ -1109,7 +1113,7 @@ def rollback_mindmap_version(mindmap_id, version_id):
     mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id).first_or_404()
     version = MindmapVersion.query.filter_by(id=version_id, mindmap_id=mindmap_id).first_or_404()
 
-    mindmap.nodes_data = version.nodes_data
+    mindmap.data = version.data
     mindmap.save_version(user_id)
 
     try:
@@ -1141,10 +1145,18 @@ def create_flowchart():
     existing_titles = [f.title for f in existing_flowcharts]
     unique_title = generate_unique_name(base_title, existing_titles)
 
+    # 兼容前端发送的flow_data格式
+    flow_data = data.get('flow_data', {})
+    
+    if not flow_data and ('nodes' in data or 'edges' in data):
+        flow_data = {
+            'nodes': data.get('nodes', []),
+            'edges': data.get('edges', [])
+        }
+    
     flowchart = Flowchart(
         title=unique_title,
-        nodes=data.get('nodes', []),
-        edges=data.get('edges', []),
+        flow_data=flow_data,
         user_id=user_id
     )
 
@@ -1192,10 +1204,17 @@ def update_flowchart(flowchart_id):
 
     if 'title' in data:
         flowchart.title = data['title']
-    if 'nodes' in data:
-        flowchart.nodes = data['nodes']
-    if 'edges' in data:
-        flowchart.edges = data['edges']
+    
+    # 兼容前端发送的flow_data格式
+    if 'flow_data' in data:
+        flowchart.flow_data = data['flow_data']
+    
+    # 兼容直接发送nodes和edges的格式
+    elif 'nodes' in data or 'edges' in data:
+        flow_data = flowchart.flow_data or {}
+        flow_data['nodes'] = data.get('nodes', flow_data.get('nodes', []))
+        flow_data['edges'] = data.get('edges', flow_data.get('edges', []))
+        flowchart.flow_data = flow_data
 
     if 'tags' in data:
         flowchart.tags.clear()
@@ -1239,6 +1258,67 @@ def delete_flowchart(flowchart_id):
         db.session.rollback()
         logger.error(f"删除流程图失败: {e}")
         return jsonify({'message': '删除失败'}), 500
+
+
+@app.route('/api/flowcharts/<int:flowchart_id>/duplicate', methods=['POST'])
+@jwt_required()
+def duplicate_flowchart(flowchart_id):
+    user_id = get_jwt_identity()
+    original_flowchart = Flowchart.query.filter_by(id=flowchart_id, user_id=user_id).first_or_404()
+
+    # 创建新的流程图副本
+    base_title = f"{original_flowchart.title} (副本)"
+    existing_flowcharts = Flowchart.query.filter_by(user_id=user_id).all()
+    existing_titles = [f.title for f in existing_flowcharts]
+    unique_title = generate_unique_name(base_title, existing_titles)
+
+    new_flowchart = Flowchart(
+        title=unique_title,
+        flow_data=original_flowchart.flow_data,
+        user_id=user_id
+    )
+
+    try:
+        db.session.add(new_flowchart)
+        db.session.commit()
+        return jsonify({'message': '复制成功', 'flowchart': new_flowchart.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"复制流程图失败: {e}")
+        return jsonify({'message': '复制失败'}), 500
+
+
+@app.route('/api/flowcharts/<int:flowchart_id>/share', methods=['POST'])
+@jwt_required()
+def share_flowchart(flowchart_id):
+    user_id = get_jwt_identity()
+    flowchart = Flowchart.query.filter_by(id=flowchart_id, user_id=user_id).first_or_404()
+    data = request.json
+
+    token = str(uuid.uuid4())
+    days = data.get('days', 7)
+    expire_at = datetime.now() + timedelta(days=days)
+
+    share_link = ShareLink(
+        flowchart_id=flowchart.id,
+        token=token,
+        permission='view',
+        expire_at=expire_at
+    )
+
+    try:
+        db.session.add(share_link)
+        db.session.commit()
+
+        return jsonify({
+            'share_url': f'/share/{token}',
+            'token': token,
+            'expire_at': expire_at.isoformat()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"创建分享链接失败: {e}")
+        return jsonify({'message': '创建分享链接失败'}), 500
 
 
 @app.route('/api/flowcharts/<int:flowchart_id>/versions', methods=['GET'])
@@ -1349,6 +1429,9 @@ def admin_dashboard_stats():
         total_flowcharts = Flowchart.query.count()
         total_whiteboards = Whiteboard.query.count()
         total_mindmaps = Mindmap.query.count()
+        
+        # 计算总笔记数（包含所有类型）
+        all_notes_count = total_notes + total_tables + total_flowcharts + total_whiteboards + total_mindmaps
 
         # 3. 统计今日新增内容（所有类型，修正cast使用方式）
         today = date.today()
@@ -1381,7 +1464,8 @@ def admin_dashboard_stats():
             'data': {
                 'userCount': user_count,  # 总用户数
                 'todayUsers': today_users,  # 今日新增用户数
-                'totalNotes': total_notes,  # 总笔记数
+                'totalNotes': all_notes_count,  # 总笔记数（包含所有类型）
+                'normalNotes': total_notes,  # 普通笔记数
                 'totalTables': total_tables,  # 总表格数
                 'totalFlowcharts': total_flowcharts,  # 总流程图数
                 'totalWhiteboards': total_whiteboards,  # 总白板数

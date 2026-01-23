@@ -136,7 +136,7 @@ async function loadFlowcharts() {
       params.tag_ids = selectedTags.value.join(',')
     }
 
-    const response = await request.get('/flowcharts', {
+    const response = await request.get('/api/flowcharts', {
       params
     })
     flowcharts.value = response
@@ -163,7 +163,7 @@ function editFlowchart(id) {
 
 async function duplicateFlowchart(id) {
   try {
-    await request.post(`/flowcharts/${id}/duplicate`, {})
+    await request.post(`/api/flowcharts/${id}/duplicate`, {})
 
     ElMessage.success('复制成功')
     loadFlowcharts()
@@ -184,7 +184,7 @@ async function confirmShare() {
 
   sharing.value = true
   try {
-    const response = await request.post(`/flowcharts/${currentFlowchartId.value}/share`, {
+    const response = await request.post(`/api/flowcharts/${currentFlowchartId.value}/share`, {
       days: 7
     })
 
@@ -211,7 +211,7 @@ async function deleteFlowchart(id) {
       type: 'warning'
     })
     
-    await request.delete(`/flowcharts/${id}`)
+    await request.delete(`/api/flowcharts/${id}`)
 
     ElMessage.success('删除成功')
     loadFlowcharts()

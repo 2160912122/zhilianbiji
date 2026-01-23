@@ -206,7 +206,8 @@ class NoteVersion(db.Model):
 class ShareLink(db.Model):
     __tablename__ = 'share_link'
     id = db.Column(db.Integer, primary_key=True)
-    note_id = db.Column(db.Integer, db.ForeignKey('note.id', ondelete='CASCADE'), nullable=False)
+    note_id = db.Column(db.Integer, db.ForeignKey('note.id', ondelete='CASCADE'), nullable=True)
+    flowchart_id = db.Column(db.Integer, db.ForeignKey('flowchart.id', ondelete='CASCADE'), nullable=True)
     token = db.Column(db.String(36), unique=True, nullable=False)
     permission = db.Column(db.String(10), nullable=False, default='view')
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -228,6 +229,7 @@ class Flowchart(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     tags = relationship('Tag', secondary=flowchart_tag, backref='flowcharts', lazy='dynamic')
+    share_links = relationship('ShareLink', backref='flowchart', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
