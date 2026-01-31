@@ -8,7 +8,7 @@ class Config:
 
     # 数据库配置（保留你的数据库账号密码，无需修改）
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-                              'mysql+pymysql://root:304416720zgZG@localhost:3306/zhilianbiji?charset=utf8mb4'
+                              'mysql+pymysql://root:123456@localhost:3306/zhilianbiji?charset=utf8mb4'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False
 
