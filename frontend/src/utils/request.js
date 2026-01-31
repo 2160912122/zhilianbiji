@@ -37,7 +37,7 @@ request.interceptors.response.use(
 
     const { status, data } = error.response
     // 核心修复2：只在明确的"token过期/无效"时才清token，且只删token不删全部
-    if (status === 401) {
+    if (status === 401 || status === 422) {
       // 增加判断：只有当前不在登录页，且确实有token时才处理（避免登录接口本身401触发）
       const currentToken = localStorage.getItem('token')
       if (window.location.pathname !== '/login' && currentToken) {

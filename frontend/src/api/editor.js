@@ -156,6 +156,35 @@ export const mindmapAPI = {
       url: `/api/mindmaps/${id}/versions/${versionId}`,
       method: 'post'
     })
+  },
+  
+  share(id, data) {
+    return request({
+      url: `/api/mindmaps/${id}/share`,
+      method: 'post',
+      data
+    })
+  },
+  
+  getShares(id) {
+    return request({
+      url: `/api/mindmaps/${id}/shares`,
+      method: 'get'
+    })
+  },
+  
+  deleteShare(token) {
+    return request({
+      url: `/api/shares/${token}`,
+      method: 'delete'
+    })
+  },
+  
+  getShared(id) {
+    return request({
+      url: `/api/mindmaps/${id}/shared`,
+      method: 'get'
+    })
   }
 }
 
