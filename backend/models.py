@@ -208,6 +208,7 @@ class ShareLink(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     note_id = db.Column(db.Integer, db.ForeignKey('note.id', ondelete='CASCADE'), nullable=True)
     flowchart_id = db.Column(db.Integer, db.ForeignKey('flowchart.id', ondelete='CASCADE'), nullable=True)
+    mindmap_id = db.Column(db.Integer, db.ForeignKey('mindmap.id', ondelete='CASCADE'), nullable=True)
     token = db.Column(db.String(36), unique=True, nullable=False)
     permission = db.Column(db.String(10), nullable=False, default='view')
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -407,6 +408,7 @@ class Mindmap(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    share_links = relationship('ShareLink', backref='mindmap', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {

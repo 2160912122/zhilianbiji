@@ -32,7 +32,8 @@ app.config.setdefault('CORS_ORIGINS', '*')
 app.config.setdefault('UPLOAD_FOLDER', 'uploads')
 app.config.setdefault('ZHIPUAI_API_KEY', os.getenv('ZHIPUAI_API_KEY', ''))
 app.config.setdefault('ZHIPUAI_MODEL', 'glm-4')
-app.config.setdefault('JWT_SECRET_KEY', 'your-secret-key-here')  # 替换为实际密钥
+# 使用与config.py一致的JWT密钥
+app.config.setdefault('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
 
 db.init_app(app)
 bcrypt.init_app(app)
@@ -660,7 +661,16 @@ def get_shares(note_id):
 def delete_share(token):
     user_id = get_jwt_identity()
     share = ShareLink.query.filter_by(token=token).first_or_404()
-    note = Note.query.filter_by(id=share.note_id, user_id=user_id).first_or_404()
+    
+    # 检查分享链接属于当前用户的笔记、流程图或脑图
+    if share.note_id:
+        Note.query.filter_by(id=share.note_id, user_id=user_id).first_or_404()
+    elif share.flowchart_id:
+        Flowchart.query.filter_by(id=share.flowchart_id, user_id=user_id).first_or_404()
+    elif share.mindmap_id:
+        Mindmap.query.filter_by(id=share.mindmap_id, user_id=user_id).first_or_404()
+    else:
+        return jsonify({'message': '无效的分享链接'}), 400
 
     db.session.delete(share)
     db.session.commit()
@@ -669,7 +679,7 @@ def delete_share(token):
 
 
 @app.route('/api/share/<token>', methods=['GET'])
-def get_shared_note(token):
+def get_shared_content(token):
     share_link = ShareLink.query.filter_by(token=token).first()
 
     if not share_link:
@@ -678,11 +688,29 @@ def get_shared_note(token):
     if share_link.expire_at and share_link.expire_at < datetime.now():
         return jsonify({'message': '分享链接已过期'}), 404
 
-    note = share_link.note
-    return jsonify({
-        'note': note.to_full_dict(),
-        'permission': share_link.permission
-    }), 200
+    if share_link.note_id:
+        note = share_link.note
+        return jsonify({
+            'type': 'note',
+            'note': note.to_full_dict(),
+            'permission': share_link.permission
+        }), 200
+    elif share_link.flowchart_id:
+        flowchart = share_link.flowchart
+        return jsonify({
+            'type': 'flowchart',
+            'flowchart': flowchart.to_dict(),
+            'permission': share_link.permission
+        }), 200
+    elif share_link.mindmap_id:
+        mindmap = share_link.mindmap
+        return jsonify({
+            'type': 'mindmap',
+            'mindmap': mindmap.to_dict(),
+            'permission': share_link.permission
+        }), 200
+    else:
+        return jsonify({'message': '无效的分享链接'}), 400
 
 
 # -------------------------- AI接口 --------------------------
@@ -1113,8 +1141,8 @@ def rollback_mindmap_version(mindmap_id, version_id):
     mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id).first_or_404()
     version = MindmapVersion.query.filter_by(id=version_id, mindmap_id=mindmap_id).first_or_404()
 
+    # 回滚到指定版本
     mindmap.data = version.data
-    mindmap.save_version(user_id)
 
     try:
         db.session.commit()
@@ -1123,6 +1151,82 @@ def rollback_mindmap_version(mindmap_id, version_id):
         db.session.rollback()
         logger.error(f"回滚脑图版本失败: {e}")
         return jsonify({'message': '回滚失败'}), 500
+
+
+# -------------------------- 脑图分享接口 --------------------------
+@app.route('/api/mindmaps/<int:mindmap_id>/share', methods=['POST'])
+@jwt_required()
+def share_mindmap(mindmap_id):
+    user_id = get_jwt_identity()
+    mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id).first_or_404()
+    data = request.json
+
+    permission = data.get('permission', 'view')
+    expires_at_str = data.get('expire_at')
+
+    if permission not in ('view', 'edit'):
+        return jsonify({'message': '无效的权限类型'}), 400
+
+    token = str(uuid.uuid4())
+
+    expire_at = None
+    if expires_at_str:
+        try:
+            expire_at = datetime.fromisoformat(expires_at_str)
+            expire_at = expire_at.replace(tzinfo=None)
+        except ValueError as e:
+            logger.error(f"有效期解析错误: {e}, 输入: {expires_at_str}")
+            return jsonify({'message': '无效的有效期格式'}), 400
+
+    share_link = ShareLink(
+        mindmap_id=mindmap.id,
+        token=token,
+        permission=permission,
+        expire_at=expire_at
+    )
+
+    try:
+        db.session.add(share_link)
+        db.session.commit()
+
+        return jsonify({
+            'share_url': f'/share/{token}',
+            'token': token,
+            'permission': permission,
+            'expire_at': expire_at.isoformat() if expire_at else None
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"创建分享链接失败: {str(e)}")
+        return jsonify({'message': '创建分享链接失败'}), 500
+
+
+@app.route('/api/mindmaps/<int:mindmap_id>/shares', methods=['GET'])
+@jwt_required()
+def get_mindmap_shares(mindmap_id):
+    user_id = get_jwt_identity()
+    mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id).first_or_404()
+    shares = ShareLink.query.filter_by(mindmap_id=mindmap.id).all()
+
+    result = []
+    for share in shares:
+        result.append({
+            'token': share.token,
+            'share_url': f'/share/{share.token}',
+            'permission': share.permission,
+            'created_at': share.created_at.isoformat() if share.created_at else None,
+            'expire_at': share.expire_at.isoformat() if share.expire_at else None
+        })
+
+    return jsonify(result)
+
+
+@app.route('/api/mindmaps/<int:mindmap_id>/shared', methods=['GET'])
+def get_shared_mindmap(mindmap_id):
+    mindmap = Mindmap.query.filter_by(id=mindmap_id).first_or_404()
+    return jsonify({
+        'mindmap': mindmap.to_dict()
+    }), 200
 
 
 # -------------------------- 流程图接口 --------------------------

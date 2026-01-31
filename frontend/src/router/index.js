@@ -133,6 +133,11 @@ const routes = [
   },
   // 404重定向简化，避免任何读取异常
   {
+    path: '/share/:token',
+    name: 'SharedContent',
+    component: () => import('@/views/SharedContent.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/login'
   }
