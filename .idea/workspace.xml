@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="746f81d3-6606-465f-b245-f105411930ad" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/ExcalidrawWrapper.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/zhilianbiji.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/zhilianbiji.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@element-plus_icons-vue.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@element-plus_icons-vue.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@element-plus_icons-vue.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@element-plus_icons-vue.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_core.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_core.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_core.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_core.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_extension.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_extension.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_extension.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@logicflow_extension.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@vueup_vue-quill.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@vueup_vue-quill.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@vueup_vue-quill.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/@vueup_vue-quill.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/_metadata.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/_metadata.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/axios.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/axios.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/axios.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/axios.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-H7CVHGUA.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-H7CVHGUA.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-HYZ2CRGS.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-HYZ2CRGS.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-KVMFOVAL.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-KVMFOVAL.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-MANNQJXN.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-MANNQJXN.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-OVGRG3DT.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-OVGRG3DT.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-SF3OONVP.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-SF3OONVP.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-YFT6OQ5R.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/chunk-YFT6OQ5R.js.map" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/echarts.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/echarts.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/echarts.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/echarts.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/element-plus.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/element-plus.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/element-plus.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/element-plus.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/html2canvas.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/html2canvas.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/html2canvas.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/html2canvas.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/marked.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/marked.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/marked.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/marked.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/pinia.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/pinia.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/pinia.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/pinia.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue-router.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue-router.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue-router.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue-router.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/vue.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/xlsx.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/xlsx.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/xlsx.js.map" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.vite/deps/xlsx.js.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/LICENSE" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/LICENSE" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.browser.min.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.browser.min.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.browser.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.browser.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.d.mts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.d.mts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.esm.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.esm.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.umd.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.umd.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.umd.min.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/dist/floating-ui.core.umd.min.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/core/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/LICENSE" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/LICENSE" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.browser.min.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.browser.min.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.browser.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.browser.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.esm.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.esm.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.min.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.min.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/dom/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/LICENSE" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/LICENSE" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.esm.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.esm.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.umd.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.umd.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.umd.min.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.umd.min.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/@floating-ui/react-dom/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/views/WhiteboardEditor.vue" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/views/WhiteboardEditor.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/vite.config.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/vite.config.js" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
+  <component name="ProjectId" id="38yIhi0sdZ6KoquGr3SHF1zvbqj" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/table-whiteboard&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/彭锦军/Desktop/zhilianbiji&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RunManager">
+    <configuration name="app" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="zhilianbiji" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/backend" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/backend/app.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.app" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-1d06a55b98c1-0b3e54e931b4-JavaScript-PY-241.17890.14" />
+        <option value="bundled-python-sdk-5b207ade9991-7e9c3bbb6e34-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-241.17890.14" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="应用程序级" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="746f81d3-6606-465f-b245-f105411930ad" name="更改" comment="" />
+      <created>1769765504534</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1769765504534</updated>
+      <workItem from="1769765505577" duration="374000" />
+      <workItem from="1769859049054" duration="1229000" />
+      <workItem from="1769948783271" duration="21000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/zhilianbiji$app.coverage" NAME="app 覆盖结果" MODIFIED="1769765870222" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/backend" />
+  </component>
+</project>
