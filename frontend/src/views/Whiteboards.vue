@@ -4,10 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>白板列表</span>
-          <el-button type="primary" @click="$router.push('/whiteboards/new')">
-            <el-icon><Plus /></el-icon>
-            新建白板
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="primary" @click="$router.push('/whiteboards/new')">
+              <el-icon><Plus /></el-icon>
+              新建白板
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -41,9 +43,12 @@ const whiteboards = ref([])
 
 async function loadWhiteboards() {
   try {
-    whiteboards.value = await whiteboardAPI.getList()
+    const result = await whiteboardAPI.getList()
+    console.log('加载白板列表结果:', result)
+    whiteboards.value = (result.code === 200 && Array.isArray(result.data)) ? result.data : []
   } catch (error) {
     console.error('Load whiteboards error:', error)
+    whiteboards.value = []
   }
 }
 
@@ -59,12 +64,19 @@ async function deleteWhiteboard(id) {
       type: 'warning'
     })
     
-    await whiteboardAPI.delete(id)
-    ElMessage.success('删除成功')
-    loadWhiteboards()
+    const result = await whiteboardAPI.delete(id)
+    console.log('删除白板结果:', result)
+    
+    if (result.code === 200) {
+      ElMessage.success('删除成功')
+      loadWhiteboards()
+    } else {
+      throw new Error(result.message || '删除失败')
+    }
   } catch (error) {
     if (error !== 'cancel') {
       console.error('Delete whiteboard error:', error)
+      ElMessage.error('删除失败: ' + (error.message || '服务器错误'))
     }
   }
 }
@@ -87,6 +99,12 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 </style>

@@ -40,6 +40,13 @@ export const tagAPI = {
     })
   },
   
+  get(id) {
+    return request({
+      url: `/api/tags/${id}`,
+      method: 'get'
+    })
+  },
+  
   create(data) {
     return request({
       url: '/api/tags',

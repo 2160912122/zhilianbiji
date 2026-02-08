@@ -11,7 +11,7 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleLogin" class="login-btn">登录</el-button>
-          <el-button @click="goToRegister" type="text">没有账号？去注册</el-button>
+          <el-button @click="goToRegister" link>没有账号？去注册</el-button>
         </el-form-item>
       </el-form>
     </el-card>

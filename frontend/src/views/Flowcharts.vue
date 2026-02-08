@@ -4,10 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>流程图列表</span>
-          <el-button type="primary" @click="$router.push('/flowcharts/new')">
-            <el-icon><Plus /></el-icon>
-            新建流程图
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="primary" @click="$router.push('/flowcharts/new')">
+              <el-icon><Plus /></el-icon>
+              新建流程图
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -139,10 +141,11 @@ async function loadFlowcharts() {
     const response = await request.get('/api/flowcharts', {
       params
     })
-    flowcharts.value = response
+    flowcharts.value = response.data || []
   } catch (error) {
     console.error('Load flowcharts error:', error)
     ElMessage.error('加载流程图列表失败')
+    flowcharts.value = []
   }
 }
 
@@ -231,21 +234,24 @@ function formatDate(dateStr) {
 const availableTags = computed(() => {
   const tagMap = new Map()
 
-  flowcharts.value.forEach(flowchart => {
-    if (flowchart.tags && flowchart.tags.length > 0) {
-      flowchart.tags.forEach(tag => {
-        if (tagMap.has(tag.id)) {
-          tagMap.get(tag.id).count++
-        } else {
-          tagMap.set(tag.id, {
-            id: tag.id,
-            name: tag.name,
-            count: 1
-          })
-        }
-      })
-    }
-  })
+  // 确保flowcharts.value是数组
+  if (Array.isArray(flowcharts.value)) {
+    flowcharts.value.forEach(flowchart => {
+      if (flowchart.tags && Array.isArray(flowchart.tags)) {
+        flowchart.tags.forEach(tag => {
+          if (tagMap.has(tag.id)) {
+            tagMap.get(tag.id).count++
+          } else {
+            tagMap.set(tag.id, {
+              id: tag.id,
+              name: tag.name,
+              count: 1
+            })
+          }
+        })
+      }
+    })
+  }
 
   return Array.from(tagMap.values()).sort((a, b) => b.count - a.count)
 })
@@ -263,6 +269,12 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 

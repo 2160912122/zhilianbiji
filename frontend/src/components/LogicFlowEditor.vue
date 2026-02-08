@@ -37,6 +37,7 @@ const emit = defineEmits(['update:flowData', 'change', 'save', 'element-selected
 const container = ref(null)
 const lf = ref(null)
 const isInitialized = ref(false)
+const pendingFlowData = ref(null)
 
 const nodeTypeMap = {
   'start': 'circle',
@@ -194,10 +195,18 @@ const initLogicFlow = async () => {
       stopZoomGraph: false,
       adjustEdge: true,
       adjustNodePosition: true,
-      hoverOutline: false,
+      hoverOutline: true,
       edgeTextDraggable: true,
       nodeTextDraggable: true,
       allowRepeatEdge: true,
+      // 启用锚点显示
+      nodeAnchor: {
+        visible: true,
+        fill: '#409EFF',
+        stroke: '#fff',
+        strokeWidth: 1,
+        r: 4
+      },
       style: {
         rect: {
           rx:6,
@@ -255,7 +264,11 @@ const initLogicFlow = async () => {
 
     isInitialized.value = true
 
-    if (props.flowData && (Object.keys(props.flowData.nodes).length > 0 || Object.keys(props.flowData.edges).length > 0)) {
+    // 检查是否有pending的flowData
+    if (pendingFlowData.value && (Object.keys(pendingFlowData.value.nodes).length > 0 || Object.keys(pendingFlowData.value.edges).length > 0)) {
+      loadFlowData(pendingFlowData.value)
+      pendingFlowData.value = null
+    } else if (props.flowData && (Object.keys(props.flowData.nodes).length > 0 || Object.keys(props.flowData.edges).length > 0)) {
       loadFlowData(props.flowData)
     }
 
@@ -627,6 +640,9 @@ const updateEdgeProperties = (edgeId, properties) => {
 watch(() => props.flowData, (newVal) => {
   if (lf.value && isInitialized.value) {
     loadFlowData(newVal)
+  } else {
+    // 如果LogicFlow实例还没有初始化完成，保存pending数据
+    pendingFlowData.value = newVal
   }
 }, { deep: true })
 

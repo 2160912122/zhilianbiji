@@ -4,10 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>表格列表</span>
-          <el-button type="primary" @click="$router.push('/tables/new')">
-            <el-icon><Plus /></el-icon>
-            新建表格
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="primary" @click="$router.push('/tables/new')">
+              <el-icon><Plus /></el-icon>
+              新建表格
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -45,9 +47,11 @@ const tables = ref([])
 
 async function loadTables() {
   try {
-    tables.value = await tableAPI.getList()
+    const result = await tableAPI.getList()
+    tables.value = result.data || []
   } catch (error) {
     console.error('Load tables error:', error)
+    tables.value = []
   }
 }
 
@@ -91,6 +95,12 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 </style>

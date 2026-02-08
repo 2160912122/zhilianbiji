@@ -68,6 +68,7 @@
                 </el-button>
               </el-tooltip>
               <el-divider direction="vertical" />
+              <AIModuleButton />
               <el-tooltip v-if="!isShared || sharePermission === 'edit'" content="保存" placement="top">
                 <el-button type="primary" @click="handleSave">
                   <el-icon><Check /></el-icon>
@@ -244,6 +245,8 @@ import { mindmapAPI } from '@/api/editor'
 import { ElMessage, ElDialog, ElForm, ElFormItem, ElSelect, ElOption, ElDatePicker, ElButton, ElTable, ElTableColumn, ElTag, ElIcon } from 'element-plus'
 import { Share, Delete, Check, DocumentCopy } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
+import { useAIStore } from '@/store/ai'
+import AIModuleButton from '@/components/AIModuleButton.vue'
 
 const props = defineProps({
   isNew: {
@@ -311,6 +314,142 @@ const shareDialogVisible = ref(false)
 const shareForm = ref({
   permission: 'view',
   expire_at: ''
+})
+
+// 初始化AI store
+const aiStore = useAIStore()
+
+// 监听AI生成的内容
+watch(() => aiStore.hasNewContent, (hasNewContent) => {
+  if (hasNewContent) {
+    try {
+      let generatedContent = aiStore.generatedContent
+      console.log('AI生成的原始内容:', generatedContent)
+      
+      // 检查AI生成的内容是否为空
+      if (!generatedContent || generatedContent.trim() === '') {
+        ElMessage.error('AI服务未返回任何内容，请检查AI服务配置是否正确')
+        console.error('AI生成内容为空，可能的原因：')
+        console.error('1. AI服务配置不正确（API密钥、基础URL等）')
+        console.error('2. 网络连接问题')
+        console.error('3. AI模型调用失败')
+        return
+      }
+      
+      // 提取Markdown代码块中的JSON内容
+      let jsonContent = generatedContent
+      const jsonMatch = generatedContent.match(/```json[\s\S]*?```/)
+      if (jsonMatch) {
+        console.log('找到JSON代码块:', jsonMatch[0])
+        jsonContent = jsonMatch[0].replace(/```json\s*/, '').replace(/\s*```/, '')
+      } else {
+        // 尝试提取普通代码块
+        const codeMatch = generatedContent.match(/```[\s\S]*?```/)
+        if (codeMatch) {
+          console.log('找到普通代码块:', codeMatch[0])
+          jsonContent = codeMatch[0].replace(/```\s*/, '').replace(/\s*```/, '')
+        } else {
+          // 尝试直接查找JSON格式的内容
+          console.log('未找到代码块，尝试直接处理内容')
+          // 尝试找到JSON的开始和结束
+          const jsonStart = generatedContent.indexOf('{')
+          const jsonEnd = generatedContent.lastIndexOf('}')
+          if (jsonStart !== -1 && jsonEnd !== -1) {
+            jsonContent = generatedContent.substring(jsonStart, jsonEnd + 1)
+            console.log('提取到的JSON内容:', jsonContent)
+          }
+        }
+      }
+      
+      // 清理并验证JSON内容
+      jsonContent = jsonContent.trim()
+      console.log('清理后的JSON内容:', jsonContent)
+      
+      if (!jsonContent) {
+        ElMessage.error('AI未生成有效的脑图数据，请检查AI服务的系统提示词是否正确')
+        return
+      }
+      
+      // 解析AI生成的脑图数据（JSON格式）
+      try {
+        const mindmapData = JSON.parse(jsonContent)
+        console.log('解析后的脑图数据:', mindmapData)
+        
+        if (mindmapData.nodes && Array.isArray(mindmapData.nodes) && mindmapData.edges && Array.isArray(mindmapData.edges)) {
+          // 使用AI生成的脑图数据
+          nodes.value = mindmapData.nodes
+          edges.value = mindmapData.edges
+          
+          // 更新节点ID计数器
+          const maxNodeId = Math.max(...nodes.value.map(node => node.id), 1)
+          nodeIdCounter = maxNodeId + 1
+          
+          // 保存到服务器
+          handleSave(true)
+          ElMessage.success('AI生成的脑图已成功加载')
+        } else {
+          ElMessage.error('AI生成的脑图格式不正确')
+        }
+      } catch (parseError) {
+        console.error('JSON解析失败:', parseError)
+        console.error('原始JSON内容:', jsonContent)
+        
+        // 尝试修复JSON格式
+        try {
+          // 移除可能的注释
+          const cleanedJson = jsonContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+          console.log('清理后的JSON内容:', cleanedJson)
+          const mindmapData = JSON.parse(cleanedJson)
+          console.log('修复后解析的脑图数据:', mindmapData)
+          
+          if (mindmapData.nodes && Array.isArray(mindmapData.nodes) && mindmapData.edges && Array.isArray(mindmapData.edges)) {
+            nodes.value = mindmapData.nodes
+            edges.value = mindmapData.edges
+            const maxNodeId = Math.max(...nodes.value.map(node => node.id), 1)
+            nodeIdCounter = maxNodeId + 1
+            handleSave(true)
+            ElMessage.success('AI生成的脑图已成功加载（已修复格式）')
+            return
+          }
+        } catch (cleanError) {
+          console.error('修复JSON格式失败:', cleanError)
+        }
+        
+        // 尝试生成默认的脑图数据
+        try {
+          console.log('尝试生成默认脑图数据')
+          const defaultMindmap = {
+            nodes: [
+              { id: 1, label: '主题', position: { x: 400, y: 100 } },
+              { id: 2, label: '子主题1', position: { x: 200, y: 200 } },
+              { id: 3, label: '子主题2', position: { x: 600, y: 200 } }
+            ],
+            edges: [
+              { from: 1, to: 2 },
+              { from: 1, to: 3 }
+            ]
+          }
+          
+          nodes.value = defaultMindmap.nodes
+          edges.value = defaultMindmap.edges
+          nodeIdCounter = 4
+          handleSave(true)
+          ElMessage.success('AI生成的脑图格式有问题，已生成默认脑图结构')
+          return
+        } catch (defaultError) {
+          console.error('生成默认脑图失败:', defaultError)
+        }
+        
+        ElMessage.error('解析AI生成的脑图失败，JSON格式不正确')
+      }
+    } catch (error) {
+      console.error('解析AI脑图数据失败:', error)
+      ElMessage.error('解析AI生成的脑图失败')
+    } finally {
+      // 重置AI store状态
+      aiStore.resetGeneratedContent()
+    }
+  }
 })
 const shareLinks = ref([])
 
@@ -421,21 +560,28 @@ async function loadMindmap() {
   if (props.isNew) return
   
   try {
-    let data
+    let mindmapData
     if (props.isShared && props.sharedMindmap) {
-      data = { mindmap: props.sharedMindmap }
+      mindmapData = props.sharedMindmap
     } else if (props.isShared) {
-      data = await mindmapAPI.getShared(mindmapId)
+      const sharedResponse = await mindmapAPI.getShared(mindmapId)
+      mindmapData = sharedResponse.data
     } else {
-      data = await mindmapAPI.get(mindmapId)
+      const response = await mindmapAPI.get(mindmapId)
+      mindmapData = response.data
     }
     
-    mindmap.value = data.mindmap
+    mindmap.value = mindmapData
     
-    if (data.mindmap.data && data.mindmap.data.nodes) {
-      nodes.value = data.mindmap.data.nodes
-      edges.value = data.mindmap.data.edges || []
-      nodeIdCounter = Math.max(...nodes.value.map(n => n.id)) + 1
+    if (mindmapData.data && mindmapData.data.nodes) {
+      nodes.value = mindmapData.data.nodes
+      edges.value = mindmapData.data.edges || []
+      // 确保nodes.value是数组并且不为空
+      if (Array.isArray(nodes.value) && nodes.value.length > 0) {
+        nodeIdCounter = Math.max(...nodes.value.map(n => n.id)) + 1
+      } else {
+        nodeIdCounter = 1
+      }
     }
   } catch (error) {
     console.error('Load mindmap error:', error)
@@ -477,8 +623,8 @@ async function handleSave(silent = false) {
       await mindmapAPI.update(mindmap.value.id, data)
     } else {
       const result = await mindmapAPI.create(data)
-      mindmap.value.id = result.mindmap.id
-      mindmap.value.title = result.mindmap.title
+      mindmap.value.id = result.data.id
+      mindmap.value.title = result.data.title
     }
     
     saveStatus.value = '已保存'

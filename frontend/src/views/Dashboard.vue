@@ -17,8 +17,8 @@
     <!-- 通用统计卡片 -->
     <el-row :gutter="20">
       <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
+        <el-card class="stat-card no-scrollbar">
+          <div class="stat-content no-scrollbar">
             <el-icon class="stat-icon" color="#409eff"><Document /></el-icon>
             <div class="stat-info">
               <div class="stat-value">{{ stats.notes || 0 }}</div>
@@ -28,8 +28,8 @@
         </el-card>
       </el-col>
       <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
+        <el-card class="stat-card no-scrollbar">
+          <div class="stat-content no-scrollbar">
             <el-icon class="stat-icon" color="#67c23a"><Grid /></el-icon>
             <div class="stat-info">
               <div class="stat-value">{{ stats.tables || 0 }}</div>
@@ -39,8 +39,8 @@
         </el-card>
       </el-col>
       <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
+        <el-card class="stat-card no-scrollbar">
+          <div class="stat-content no-scrollbar">
             <el-icon class="stat-icon" color="#e6a23c"><EditPen /></el-icon>
             <div class="stat-info">
               <div class="stat-value">{{ stats.whiteboards || 0 }}</div>
@@ -50,8 +50,8 @@
         </el-card>
       </el-col>
       <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
+        <el-card class="stat-card no-scrollbar">
+          <div class="stat-content no-scrollbar">
             <el-icon class="stat-icon" color="#f56c6c"><Connection /></el-icon>
             <div class="stat-info">
               <div class="stat-value">{{ stats.mindmaps || 0 }}</div>
@@ -61,8 +61,8 @@
         </el-card>
       </el-col>
       <el-col :span="4">
-        <el-card class="stat-card">
-          <div class="stat-content">
+        <el-card class="stat-card no-scrollbar">
+          <div class="stat-content no-scrollbar">
             <el-icon class="stat-icon" color="#909399"><Share /></el-icon>
             <div class="stat-info">
               <div class="stat-value">{{ stats.flowcharts || 0 }}</div>
@@ -180,25 +180,52 @@ async function loadStats() {
       request.get('/api/flowcharts')
     ])
 
+    // 处理后端返回的数据格式（code, message, data）
+const getArrayData = (res) => {
+  console.log('处理API响应数据:', res)
+  if (res && typeof res === 'object') {
+    // 检查是否是标准API响应格式
+    if (res.code === 200 && Array.isArray(res.data)) {
+      return res.data
+    }
+    // 检查是否直接返回了数组
+    if (Array.isArray(res)) {
+      return res
+    }
+  }
+  return []
+}
+
+    // 提取数据数组
+    const notesData = getArrayData(notesRes)
+    const tablesData = getArrayData(tablesRes)
+    const whiteboardsData = getArrayData(whiteboardsRes)
+    const mindmapsData = getArrayData(mindmapsRes)
+    const flowchartsData = getArrayData(flowchartsRes)
+
     // 赋值个人统计数据
     stats.value = {
-      notes: Array.isArray(notesRes) ? notesRes.length : 0,
-      tables: Array.isArray(tablesRes) ? tablesRes.length : 0,
-      whiteboards: Array.isArray(whiteboardsRes) ? whiteboardsRes.length : 0,
-      mindmaps: Array.isArray(mindmapsRes) ? mindmapsRes.length : 0,
-      flowcharts: Array.isArray(flowchartsRes) ? flowchartsRes.length : 0
+      notes: notesData.length,
+      tables: tablesData.length,
+      whiteboards: whiteboardsData.length,
+      mindmaps: mindmapsData.length,
+      flowcharts: flowchartsData.length
     }
+
+    console.log('仪表盘数据:', stats.value)
 
     // 整理最近更新的内容
     recentItems.value = [
-      ...(Array.isArray(notesRes) ? notesRes.slice(0, 2) : []).map(n => ({ ...n, type: 'note' })),
-      ...(Array.isArray(tablesRes) ? tablesRes.slice(0, 2) : []).map(t => ({ ...t, type: 'table' })),
-      ...(Array.isArray(whiteboardsRes) ? whiteboardsRes.slice(0, 2) : []).map(w => ({ ...w, type: 'whiteboard' })),
-      ...(Array.isArray(mindmapsRes) ? mindmapsRes.slice(0, 2) : []).map(m => ({ ...m, type: 'mindmap' })),
-      ...(Array.isArray(flowchartsRes) ? flowchartsRes.slice(0, 2) : []).map(f => ({ ...f, type: 'flowchart' }))
+      ...notesData.slice(0, 2).map(n => ({ ...n, type: 'note' })),
+      ...tablesData.slice(0, 2).map(t => ({ ...t, type: 'table' })),
+      ...whiteboardsData.slice(0, 2).map(w => ({ ...w, type: 'whiteboard' })),
+      ...mindmapsData.slice(0, 2).map(m => ({ ...m, type: 'mindmap' })),
+      ...flowchartsData.slice(0, 2).map(f => ({ ...f, type: 'flowchart' }))
     ]
       .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
       .slice(0, 5)
+
+    console.log('最近更新内容:', recentItems.value)
   } catch (error) {
     console.error('加载数据失败:', error)
     // 权限错误/Token过期会被request.js的响应拦截器处理，自动跳登录页
@@ -277,6 +304,10 @@ onMounted(() => {
 .stat-card {
   cursor: pointer;
   transition: transform 0.2s;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
 .stat-card:hover {
   transform: translateY(-5px);
@@ -285,6 +316,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 20px;
+  width: 100%;
+  height: 80px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 .stat-icon {
   font-size: 48px;
@@ -296,11 +331,12 @@ onMounted(() => {
   font-size: 32px;
   font-weight: bold;
   color: #333;
+  margin: 0;
 }
 .stat-label {
   font-size: 14px;
   color: #999;
-  margin-top: 5px;
+  margin: 5px 0 0 0;
 }
 .card-header {
   display: flex;
@@ -316,5 +352,15 @@ onMounted(() => {
   width: 100%;
   justify-content: flex-start;
   gap: 10px;
+  align-items: center;
+  padding: 12px 20px;
+  height: 50px;
+}
+.quick-action-btn span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: flex-start;
 }
 </style>

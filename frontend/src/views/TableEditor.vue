@@ -18,6 +18,7 @@
             />
           </div>
           <div class="header-right">
+            <AIModuleButton />
             <el-button @click="exportExcel">
               <el-icon><Download /></el-icon>
               导出Excel
@@ -187,11 +188,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import * as XLSX from 'xlsx'
 import { tableAPI } from '@/api/editor'
 import { ElMessage } from 'element-plus'
+import AIModuleButton from '@/components/AIModuleButton.vue'
+import { useAIStore } from '@/store/ai'
 import { 
   Back, 
   Download, 
@@ -228,6 +231,79 @@ const showVersions = ref(false)
 const saveStatus = ref('未保存')
 let autoSaveTimer = null
 
+// 初始化AI store
+const aiStore = useAIStore()
+
+// 监听AI生成的内容
+watch(() => aiStore.hasNewContent, (hasNewContent) => {
+  if (hasNewContent) {
+    try {
+      let generatedContent = aiStore.generatedContent
+      
+      // 提取Markdown代码块中的JSON内容
+      let jsonContent = generatedContent
+      const jsonMatch = generatedContent.match(/```json[\s\S]*?```/)
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0].replace(/```json\s*/, '').replace(/\s*```/, '')
+      } else {
+        // 尝试提取普通代码块
+        const codeMatch = generatedContent.match(/```[\s\S]*?```/)
+        if (codeMatch) {
+          jsonContent = codeMatch[0].replace(/```\s*/, '').replace(/\s*```/, '')
+        }
+      }
+      
+      // 清理并验证JSON内容
+      jsonContent = jsonContent.trim()
+      if (!jsonContent) {
+        ElMessage.error('AI未生成有效的表格数据')
+        return
+      }
+      
+      // 解析AI生成的表格数据（JSON格式）
+      try {
+        const tableData = JSON.parse(jsonContent)
+        if (tableData.columns && Array.isArray(tableData.columns) && tableData.rows && Array.isArray(tableData.rows)) {
+          // 使用AI生成的表格数据
+          table.value.columns = tableData.columns
+          table.value.rows = tableData.rows
+          // 保存到服务器
+          handleSave(true)
+          ElMessage.success('AI生成的表格已成功加载')
+        } else {
+          ElMessage.error('AI生成的表格格式不正确')
+        }
+      } catch (parseError) {
+        console.error('JSON解析失败:', parseError)
+        console.error('原始JSON内容:', jsonContent)
+        
+        // 尝试修复JSON格式
+        try {
+          // 移除可能的注释
+          const cleanedJson = jsonContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+          const tableData = JSON.parse(cleanedJson)
+          if (tableData.columns && Array.isArray(tableData.columns) && tableData.rows && Array.isArray(tableData.rows)) {
+            table.value.columns = tableData.columns
+            table.value.rows = tableData.rows
+            handleSave(true)
+            ElMessage.success('AI生成的表格已成功加载（已修复格式）')
+            return
+          }
+        } catch (cleanError) {
+          console.error('修复JSON格式失败:', cleanError)
+        }
+        
+        ElMessage.error('解析AI生成的表格失败，JSON格式不正确')
+      }
+    } catch (error) {
+      console.error('解析AI表格数据失败:', error)
+      ElMessage.error('解析AI生成的表格失败')
+    }
+    // 重置AI store状态
+    aiStore.resetGeneratedContent()
+  }
+})
+
 const editingCell = reactive({ row: -1, col: -1 })
 const selectedCell = reactive({ row: -1, col: -1 })
 const selectedCellStyles = reactive({
@@ -251,8 +327,8 @@ async function loadTable() {
   if (props.isNew) return
   
   try {
-    const data = await tableAPI.get(tableId)
-    table.value = data.table
+    const response = await tableAPI.get(tableId)
+    table.value = response.data
   } catch (error) {
     console.error('Load table error:', error)
   }
@@ -263,9 +339,10 @@ async function loadVersions() {
   
   try {
     const data = await tableAPI.getVersions(table.value.id)
-    versions.value = data.versions
+    versions.value = data.data || []
   } catch (error) {
     console.error('Load versions error:', error)
+    versions.value = []
   }
 }
 
@@ -404,8 +481,17 @@ async function handleSave(silent = false) {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   
   try {
+    let title = table.value.title || ''
+    
+    // 为新表格生成唯一的默认标题
+    if (!title && !table.value.id) {
+      title = `新表格_${Date.now()}`
+    } else if (!title) {
+      title = '新表格'
+    }
+    
     const data = {
-      title: table.value.title || '新表格',
+      title: title,
       columns: table.value.columns,
       rows: table.value.rows,
       cellStyles: table.value.cellStyles
@@ -415,8 +501,8 @@ async function handleSave(silent = false) {
       await tableAPI.update(table.value.id, data)
     } else {
       const result = await tableAPI.create(data)
-      table.value.id = result.table.id
-      table.value.title = result.table.title
+      table.value.id = result.data.id
+      table.value.title = result.data.title
     }
     
     saveStatus.value = '已保存'
@@ -425,6 +511,11 @@ async function handleSave(silent = false) {
     console.error('Save table error:', error)
     saveStatus.value = '保存失败'
     if (!silent) ElMessage.error('保存失败')
+    
+    // 显示具体的错误信息
+    if (error.response && error.response.data && error.response.data.message) {
+      ElMessage.error(error.response.data.message)
+    }
   }
 }
 

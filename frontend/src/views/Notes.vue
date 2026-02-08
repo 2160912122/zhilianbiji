@@ -4,10 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>笔记列表</span>
-          <el-button type="primary" @click="$router.push('/notes/new')">
-            <el-icon><Plus /></el-icon>
-            新建笔记
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="primary" @click="$router.push('/notes/new')">
+              <el-icon><Plus /></el-icon>
+              新建笔记
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -100,17 +102,21 @@ async function loadNotes() {
     if (selectedCategory.value) params.category_id = selectedCategory.value
     if (selectedType.value) params.type = selectedType.value
     
-    notes.value = await noteAPI.getList(params)
+    const result = await noteAPI.getList(params)
+    notes.value = result.data || []
   } catch (error) {
     console.error('Load notes error:', error)
+    notes.value = []
   }
 }
 
 async function loadCategories() {
   try {
-    categories.value = await categoryAPI.getList()
+    const result = await categoryAPI.getList()
+    categories.value = result.data || []
   } catch (error) {
     console.error('Load categories error:', error)
+    categories.value = []
   }
 }
 
@@ -167,6 +173,12 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 

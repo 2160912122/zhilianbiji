@@ -25,9 +25,7 @@ class Config:
     CORS_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:8080']
     CORS_SUPPORTS_CREDENTIALS = True  # 新增：允许跨域请求带cookie/token
 
-    # AI配置（保留原有）
-    ZHIPUAI_API_KEY = os.environ.get('ZHIPUAI_API_KEY', '')
-    ZHIPUAI_MODEL = os.environ.get('ZHIPUAI_MODEL', 'glm-4')
+    
 
 
 class DevelopmentConfig(Config):

@@ -19,6 +19,9 @@ export default defineConfig({
         changeOrigin: true, // 必须开启
         ws: true,
       }
+    },
+    fs: {
+      strict: false
     }
   }
 })

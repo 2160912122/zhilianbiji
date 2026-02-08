@@ -4,10 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>脑图列表</span>
-          <el-button type="primary" @click="$router.push('/mindmaps/new')">
-            <el-icon><Plus /></el-icon>
-            新建脑图
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="primary" @click="$router.push('/mindmaps/new')">
+              <el-icon><Plus /></el-icon>
+              新建脑图
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -47,9 +49,11 @@ const mindmaps = ref([])
 
 async function loadMindmaps() {
   try {
-    mindmaps.value = await mindmapAPI.getList()
+    const result = await mindmapAPI.getList()
+    mindmaps.value = result.data || []
   } catch (error) {
     console.error('Load mindmaps error:', error)
+    mindmaps.value = []
   }
 }
 
@@ -93,6 +97,12 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 </style>

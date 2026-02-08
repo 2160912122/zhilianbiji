@@ -1,13 +1,27 @@
 <template>
-  <!-- 路由出口：渲染匹配的页面组件 -->
-  <router-view />
+  <div id="app">
+    <!-- 路由出口：渲染匹配的页面组件 -->
+    <router-view />
+    <!-- AI浮动按钮 -->
+    <AIFloatingButton :show-on-page="!isAuthPage" />
+  </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useUserStore } from './store/user'
+import { useRoute } from 'vue-router'
+import AIFloatingButton from './components/AIFloatingButton.vue'
 
 const userStore = useUserStore()
+const route = useRoute()
+const isAuthPage = ref(false)
+
+// 检查当前是否在登录或注册页面
+const checkIfAuthPage = () => {
+  const authPaths = ['/login', '/register']
+  isAuthPage.value = authPaths.includes(route.path)
+}
 
 // 应用启动时初始化用户状态
 onMounted(() => {
@@ -17,6 +31,13 @@ onMounted(() => {
     token: userStore.token,
     is_admin: userStore.is_admin
   })
+  // 检查当前页面
+  checkIfAuthPage()
+})
+
+// 监听路由变化
+watch(() => route.path, () => {
+  checkIfAuthPage()
 })
 </script>
 

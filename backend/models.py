@@ -167,7 +167,12 @@ class Note(db.Model):
     def to_full_dict(self):
         result = self.to_dict(include_content=True)
         result['category'] = self.category.to_dict() if self.category else None
-        result['tags'] = [tag.to_dict() for tag in self.tags]
+        result['tags'] = []
+        try:
+            for tag in self.tags:
+                result['tags'].append(tag.to_dict())
+        except Exception as e:
+            print(f"Error converting tags to dict: {e}")
         return result
 
     def save_version(self, updater_id):
@@ -196,7 +201,7 @@ class NoteVersion(db.Model):
             'id': self.id,
             'content': self.content,
             'updater': {
-                'username': self.updater.username
+                'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat(),
             'content_preview': self.content[:150] + '...' if len(self.content) > 150 else self.content
@@ -272,7 +277,7 @@ class FlowchartVersion(db.Model):
             'id': self.id,
             'flow_data': self.flow_data,
             'updater': {
-                'username': self.updater.username
+                'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat()
         }
@@ -335,7 +340,7 @@ class TableDocumentVersion(db.Model):
             'rows': self.rows_data,
             'cellStyles': self.cell_styles,
             'updater': {
-                'username': self.updater.username
+                'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat()
         }
@@ -390,7 +395,7 @@ class WhiteboardVersion(db.Model):
             'id': self.id,
             'data': self.data,
             'updater': {
-                'username': self.updater.username
+                'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat()
         }
@@ -448,7 +453,7 @@ class MindmapVersion(db.Model):
             'id': self.id,
             'data': self.data,
             'updater': {
-                'username': self.updater.username
+                'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat()
         }

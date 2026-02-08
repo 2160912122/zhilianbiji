@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 const request = axios.create({
   baseURL: '/',
-  timeout: 30000,
+  timeout: 60000, // 增加超时时间到60秒，适应AI生成内容的长时间处理
   withCredentials: true,
   responseType: 'json',
   headers: {
@@ -29,6 +29,7 @@ request.interceptors.response.use(
     return res
   },
   error => {
+    console.error('请求错误:', error)
     // 核心修复1：增加错误容错，避免无response时报错
     if (!error.response) {
       ElMessage.error('无法连接后端，请确认http://localhost:5000能访问')
@@ -36,6 +37,8 @@ request.interceptors.response.use(
     }
 
     const { status, data } = error.response
+    console.error('错误状态:', status)
+    console.error('错误数据:', data)
     // 核心修复2：只在明确的"token过期/无效"时才清token，且只删token不删全部
     if (status === 401 || status === 422) {
       // 增加判断：只有当前不在登录页，且确实有token时才处理（避免登录接口本身401触发）
@@ -49,6 +52,8 @@ request.interceptors.response.use(
         setTimeout(() => {
           window.location.href = '/login'
         }, 1000)
+      } else {
+        ElMessage.error('登录失败，请检查用户名和密码')
       }
     } else if (status === 403) {
       ElMessage.error(data?.msg || '无管理员权限')

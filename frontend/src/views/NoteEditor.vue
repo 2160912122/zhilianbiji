@@ -16,18 +16,7 @@
             />
           </div>
           <div class="header-right">
-            <el-button @click="handleAIGenerate">
-              <el-icon><MagicStick /></el-icon>
-              AI生成
-            </el-button>
-            <el-button @click="handleAISummarize">
-              <el-icon><ChatLineSquare /></el-icon>
-              AI总结
-            </el-button>
-            <el-button @click="handleAISuggestTags">
-              <el-icon><PriceTag /></el-icon>
-              AI推荐标签
-            </el-button>
+            <AIModuleButton />
             <el-button @click="handleSave" type="primary">
               <el-icon><Check /></el-icon>
               保存
@@ -105,21 +94,6 @@
         </el-button>
       </div>
     </el-card>
-    
-    <el-dialog v-model="aiDialogVisible" title="AI生成" width="600px">
-      <el-input
-        v-model="aiTopic"
-        type="textarea"
-        :rows="3"
-        placeholder="请输入主题，AI将为您生成笔记内容"
-      />
-      <template #footer>
-        <el-button @click="aiDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmAIGenerate" :loading="aiLoading">
-          生成
-        </el-button>
-      </template>
-    </el-dialog>
     
     <el-dialog v-model="shareDialogVisible" title="分享笔记" width="700px">
       <el-form label-width="80px">
@@ -224,8 +198,9 @@ import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import { marked } from 'marked'
 import { noteAPI } from '@/api/note'
 import { categoryAPI, tagAPI } from '@/api/common'
-import { aiAPI } from '@/api/ai'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAIStore } from '@/store/ai'
+import AIModuleButton from '@/components/AIModuleButton.vue'
 
 const Delta = Quill.import('delta')
 
@@ -251,23 +226,28 @@ const note = ref({
 const categories = ref([])
 const tags = ref([])
 const selectedTags = ref([])
+const showVersions = ref(false)
+const selectedVersion = ref(null)
 const versions = ref([])
-const saveStatus = ref('未保存')
-
-const aiDialogVisible = ref(false)
-const aiTopic = ref('')
-const aiLoading = ref(false)
-
 const shareDialogVisible = ref(false)
-const shareData = ref({
-  permission: 'view',
-  expireAt: ''
-})
+const shareData = ref({ permission: 'view', expireAt: '' })
 const shareUrl = ref('')
 const shareExpireDate = ref('')
 const existingShares = ref([])
+const saveStatus = ref('')
 
-const showVersions = ref(false)
+// 初始化AI store
+const aiStore = useAIStore()
+
+// 监听AI生成的内容
+watch(() => aiStore.hasNewContent, (hasNewContent) => {
+  if (hasNewContent) {
+    // 调用insertAiContent函数将AI生成的内容插入到笔记中
+    insertAiContent(aiStore.generatedContent)
+    // 重置AI store状态
+    aiStore.resetGeneratedContent()
+  }
+})
 
 let autoSaveTimer = null
 
@@ -285,15 +265,22 @@ const quillContent = computed(() => {
   if (!content) return new Delta([])
   if (content instanceof Delta) return content
   if (typeof content === 'object' && content.ops) {
-    return new Delta(content.ops)
+    if (Array.isArray(content.ops)) {
+      return new Delta(content.ops)
+    } else {
+      return new Delta([])
+    }
   }
   if (typeof content === 'string') {
     try {
       const parsed = JSON.parse(content)
-      if (parsed.ops) {
+      if (parsed.ops && Array.isArray(parsed.ops)) {
         return new Delta(parsed.ops)
+      } else if (Array.isArray(parsed)) {
+        return new Delta(parsed)
+      } else {
+        return new Delta([{ insert: JSON.stringify(parsed) }])
       }
-      return new Delta([{ insert: parsed }])
     } catch (e) {
       return new Delta([{ insert: content }])
     }
@@ -308,46 +295,84 @@ function onQuillReady(quill) {
 }
 
 function onQuillUpdate(delta) {
-  if (delta instanceof Delta) {
-    note.value.content = delta
-  } else if (typeof delta === 'object' && delta.ops) {
-    note.value.content = new Delta(delta.ops)
-  } else {
+  try {
+    if (delta instanceof Delta) {
+      note.value.content = delta
+    } else if (typeof delta === 'object') {
+      if (delta.ops && Array.isArray(delta.ops)) {
+        note.value.content = new Delta(delta.ops)
+      } else {
+        note.value.content = new Delta([])
+      }
+    } else {
+      note.value.content = new Delta([])
+    }
+    handleAutoSave()
+  } catch (error) {
+    console.error('Quill update error:', error)
     note.value.content = new Delta([])
+    handleAutoSave()
   }
-  handleAutoSave()
 }
 
 async function loadNote() {
   if (props.isNew) return
   
   try {
-    const data = await noteAPI.get(noteId)
+    const response = await noteAPI.get(noteId)
     
-    if (data.note.type === 'richtext') {
-      let content = { ops: [] }
-      if (data.note.content) {
-        if (typeof data.note.content === 'string') {
-          try {
-            const parsed = JSON.parse(data.note.content)
-            content = parsed.ops ? parsed : { ops: parsed }
-          } catch (e) {
-            console.warn('Failed to parse richtext content:', e)
-            content = { ops: [{ insert: data.note.content }] }
+    // 使用response.data作为笔记对象
+    const noteData = response.data
+    
+    if (noteData.type === 'richtext') {
+          let content = { ops: [] }
+          if (noteData.content) {
+            if (typeof noteData.content === 'string') {
+              try {
+                const parsed = JSON.parse(noteData.content)
+                if (parsed.ops && Array.isArray(parsed.ops)) {
+                  content = parsed
+                } else if (Array.isArray(parsed)) {
+                  content = { ops: parsed }
+                } else {
+                  content = { ops: [{ insert: JSON.stringify(parsed) }] }
+                }
+              } catch (e) {
+                console.warn('Failed to parse richtext content:', e)
+                content = { ops: [{ insert: noteData.content }] }
+              }
+            } else if (typeof noteData.content === 'object') {
+              if (noteData.content.ops && Array.isArray(noteData.content.ops)) {
+                content = noteData.content
+              } else {
+                content = { ops: [{ insert: JSON.stringify(noteData.content) }] }
+              }
+            }
           }
-        } else if (typeof data.note.content === 'object' && data.note.content.ops) {
-          content = data.note.content
-        }
-      }
-      data.note.content = content
-    } else if (data.note.type === 'markdown') {
-      if (typeof data.note.content === 'object') {
-        data.note.content = JSON.stringify(data.note.content)
+          noteData.content = content
+    } else if (noteData.type === 'markdown') {
+      if (typeof noteData.content === 'object') {
+        noteData.content = JSON.stringify(noteData.content)
       }
     }
     
-    note.value = data.note
-    selectedTags.value = data.note.tags.map(t => t.name)
+    note.value = noteData
+    
+    // 处理标签
+    if (Array.isArray(noteData.tags)) {
+      selectedTags.value = noteData.tags.map(t => t.name)
+    } else if (Array.isArray(noteData.tag_ids)) {
+      // 如果返回的是tag_ids而不是tags，需要加载标签名称
+      const tagNames = await Promise.all(
+        noteData.tag_ids.map(async (tagId) => {
+          const tag = await tagAPI.get(tagId)
+          return tag.name
+        })
+      )
+      selectedTags.value = tagNames
+    } else {
+      selectedTags.value = []
+    }
   } catch (error) {
     console.error('Load note error:', error)
   }
@@ -355,17 +380,21 @@ async function loadNote() {
 
 async function loadCategories() {
   try {
-    categories.value = await categoryAPI.getList()
+    const response = await categoryAPI.getList()
+    categories.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
     console.error('Load categories error:', error)
+    categories.value = []
   }
 }
 
 async function loadTags() {
   try {
-    tags.value = await tagAPI.getList()
+    const response = await tagAPI.getList()
+    tags.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
     console.error('Load tags error:', error)
+    tags.value = []
   }
 }
 
@@ -378,9 +407,11 @@ async function loadVersions() {
   if (!note.value.id) return
   
   try {
-    versions.value = await noteAPI.getVersions(note.value.id)
+    const response = await noteAPI.getVersions(note.value.id)
+    versions.value = response.data || []
   } catch (error) {
     console.error('Load versions error:', error)
+    versions.value = []
   }
 }
 
@@ -423,7 +454,7 @@ async function handleSave(silent = false) {
       await noteAPI.update(note.value.id, data)
     } else {
       const result = await noteAPI.create(data)
-      note.value.id = result.note.id
+      note.value.id = result.data.id
     }
     
     await loadVersions()
@@ -439,77 +470,6 @@ async function handleSave(silent = false) {
 
 function handleTypeChange() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
-}
-
-async function handleAIGenerate() {
-  aiDialogVisible.value = true
-}
-
-async function confirmAIGenerate() {
-  if (!aiTopic.value.trim()) {
-    ElMessage.warning('请输入主题')
-    return
-  }
-  
-  aiLoading.value = true
-  
-  try {
-    const result = await aiAPI.generate(aiTopic.value)
-    note.value.content = result.content
-    note.value.title = result.suggested_title
-    aiDialogVisible.value = false
-    aiTopic.value = ''
-    ElMessage.success('AI生成成功')
-    handleAutoSave()
-  } catch (error) {
-    console.error('AI generate error:', error)
-    ElMessage.error('AI生成失败')
-  } finally {
-    aiLoading.value = false
-  }
-}
-
-async function handleAISummarize() {
-  if (!note.value.content) {
-    ElMessage.warning('请先输入内容')
-    return
-  }
-  
-  let content = note.value.content
-  if (note.value.type === 'richtext' && typeof content === 'object') {
-    content = JSON.stringify(content)
-  }
-  
-  try {
-    const result = await aiAPI.summarize(content)
-    ElMessageBox.alert(result.summary, 'AI总结', {
-      confirmButtonText: '确定'
-    })
-  } catch (error) {
-    console.error('AI summarize error:', error)
-    ElMessage.error('AI总结失败')
-  }
-}
-
-async function handleAISuggestTags() {
-  if (!note.value.content) {
-    ElMessage.warning('请先输入内容')
-    return
-  }
-  
-  let content = note.value.content
-  if (note.value.type === 'richtext' && typeof content === 'object') {
-    content = JSON.stringify(content)
-  }
-  
-  try {
-    const result = await aiAPI.suggestTags(content)
-    selectedTags.value = [...new Set([...selectedTags.value, ...result.tags])]
-    ElMessage.success('标签推荐成功')
-  } catch (error) {
-    console.error('AI suggest tags error:', error)
-    ElMessage.error('标签推荐失败')
-  }
 }
 
 async function handleShare() {
@@ -611,6 +571,31 @@ async function rollbackVersion(version) {
       ElMessage.error('回滚失败')
     }
   }
+}
+
+// 添加AI内容到笔记
+function insertAiContent(content) {
+  if (!content) return
+  
+  if (note.value.type === 'richtext') {
+    if (!note.value.content || !note.value.content.ops) {
+      note.value.content = { ops: [] }
+    }
+    // 确保content是字符串
+    const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
+    // 插入新内容（添加换行符分隔）
+    note.value.content.ops.push({ insert: '\n' })
+    note.value.content.ops.push({ insert: contentStr })
+    note.value.content.ops.push({ insert: '\n' })
+  } else if (note.value.type === 'markdown') {
+    // 确保content是字符串
+    const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
+    // 添加新内容（添加换行符分隔）
+    note.value.content = (note.value.content || '') + '\n\n' + contentStr + '\n\n'
+  }
+  
+  // 自动保存
+  handleAutoSave()
 }
 
 watch(() => note.value.type, (newType, oldType) => {

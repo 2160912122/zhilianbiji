@@ -5,10 +5,10 @@
         <el-input
           v-model="flowTitle"
           placeholder="流程图标题"
-          @input="updateTitle"
           style="width: 300px;"
           size="small"
           clearable
+          @input="handleTitleInput"
         />
         <el-button-group>
           <el-button @click="save" :loading="saving" size="small">
@@ -89,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Check, Download, Share, RefreshLeft, RefreshRight,
@@ -124,6 +124,16 @@ const emit = defineEmits([
 
 const flowTitle = ref(props.flowTitle)
 const graphData = ref({ ...props.initialData })
+
+// 监听initialData变化，更新graphData
+watch(() => props.initialData, (newData) => {
+  graphData.value = { ...newData }
+}, { deep: true })
+
+// 监听flowTitle变化，同步更新本地flowTitle
+watch(() => props.flowTitle, (newTitle) => {
+  flowTitle.value = newTitle
+}, { immediate: true })
 const selectedElement = ref(null)
 const readOnly = ref(false)
 const saving = ref(false)
@@ -212,6 +222,10 @@ const handleElementSelected = (element) => {
   selectedElement.value = element
 }
 
+const handleTitleInput = () => {
+  emit('title-change', flowTitle.value)
+}
+
 const updateTitle = () => {
   emit('title-change', flowTitle.value)
 }
@@ -222,6 +236,11 @@ const save = async () => {
   saving.value = true
   try {
     const data = lfEditor.value.getFlowData()
+    
+    // 确保标题不为空
+    if (!flowTitle.value) {
+      flowTitle.value = '未命名流程图'
+    }
 
     const result = await emit('save', data)
 
@@ -291,9 +310,17 @@ const handleDeleteElement = (elementId) => {
 
   selectedElement.value = null
 
+  // 等待删除操作完成后再保存状态，确保获取最新数据
   setTimeout(() => {
+    // 确保graphData已经更新
+    if (lfEditor.value) {
+      const latestData = lfEditor.value.getFlowData()
+      if (latestData) {
+        graphData.value = latestData
+      }
+    }
     saveState()
-  }, 100)
+  }, 200)
 }
 
 const handleClearSelection = () => {

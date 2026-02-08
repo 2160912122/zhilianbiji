@@ -16,15 +16,8 @@
             />
           </div>
           <div class="header-right">
-            <el-button @click="clearCanvas">
-              <el-icon><Delete /></el-icon>
-              清空
-            </el-button>
-            <el-button @click="exportImage">
-              <el-icon><Download /></el-icon>
-              导出图片
-            </el-button>
-            <el-button @click="showVersions = true">
+            <AIModuleButton />
+            <el-button link @click="showVersions = true">
               <el-icon><Clock /></el-icon>
               版本历史
             </el-button>
@@ -37,50 +30,13 @@
       </template>
       
       <div class="whiteboard-container">
-        <div class="toolbar">
-          <el-button-group>
-            <el-button
-              :type="currentTool === 'select' ? 'primary' : ''"
-              @click="setTool('select')"
-            >
-              <el-icon><Pointer /></el-icon>
-              选择
-            </el-button>
-            <el-button
-              :type="currentTool === 'pen' ? 'primary' : ''"
-              @click="setTool('pen')"
-            >
-              <el-icon><EditPen /></el-icon>
-              画笔
-            </el-button>
-            <el-button
-              :type="currentTool === 'eraser' ? 'primary' : ''"
-              @click="setTool('eraser')"
-            >
-              <el-icon><Delete /></el-icon>
-              橡皮擦
-            </el-button>
-          </el-button-group>
-          
-          <el-color-picker v-model="strokeColor" @change="handleColorChange" />
-          
-          <el-slider
-            v-model="strokeWidth"
-            :min="1"
-            :max="50"
-            style="width: 150px; margin-left: 20px"
-            @change="handleWidthChange"
-          />
-        </div>
-        
-        <canvas
-          ref="canvasRef"
-          class="whiteboard-canvas"
-          @mousedown="handleMouseDown"
-          @mousemove="handleMouseMove"
-          @mouseup="handleMouseUp"
-          @mouseleave="handleMouseUp"
-        />
+        <iframe
+          ref="wboIframe"
+          class="wbo-iframe"
+          :src="wboUrl"
+          frameborder="0"
+          allowfullscreen
+        ></iframe>
       </div>
       
       <div class="editor-footer">
@@ -97,7 +53,7 @@
           placement="top"
         >
           <div class="version-item">
-            <div class="version-content">笔画数: {{ Object.keys(version.data || {}).length || 0 }}</div>
+            <div class="version-content">版本: {{ version.id }}</div>
             <div class="version-actions">
               <el-button link type="warning" @click="rollbackVersion(version)">
                 回滚
@@ -111,10 +67,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { whiteboardAPI } from '@/api/editor'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import AIModuleButton from '@/components/AIModuleButton.vue'
+import { useAIStore } from '@/store/ai'
 
 const props = defineProps({
   isNew: {
@@ -135,29 +93,157 @@ const whiteboard = ref({
 
 const versions = ref([])
 const showVersions = ref(false)
+const wboIframe = ref(null)
 
-const canvasRef = ref(null)
-const ctx = ref(null)
-const currentTool = ref('select')
-const strokeColor = ref('#000000')
-const strokeWidth = ref(3)
-const isDrawing = ref(false)
-const lastX = ref(0)
-const lastY = ref(0)
+// WBO JWT令牌
+const wboToken = ref('')
 
 const saveStatus = ref('未保存')
 let autoSaveTimer = null
+
+// 初始化AI store
+const aiStore = useAIStore()
+
+// 监听AI生成的内容
+watch(() => aiStore.hasNewContent, (hasNewContent) => {
+  if (hasNewContent) {
+    try {
+      // AI生成的白板内容可能是文本描述或JSON数据
+      const aiContent = aiStore.generatedContent
+      
+      // 更新白板标题（如果没有标题）
+      if (!whiteboard.value.title) {
+        whiteboard.value.title = 'AI生成的白板'
+      }
+      
+      // 显示AI生成的内容作为提示
+      ElMessageBox.alert(
+        `<div style="max-height: 300px; overflow-y: auto;">
+          <h4>AI生成的白板内容</h4>
+          <pre style="white-space: pre-wrap; word-break: break-all;">${aiContent}</pre>
+          <p style="margin-top: 10px; color: #666;">请在白板中手动创建相关内容</p>
+        </div>`,
+        'AI内容提示',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '确定',
+          type: 'success'
+        }
+      )
+      
+      // 尝试自动绘制简单图形（示例：画一个苹果）
+      setTimeout(() => {
+        drawApple()
+      }, 1000)
+      
+      ElMessage.success('AI生成的白板内容已准备就绪')
+    } catch (error) {
+      console.error('处理AI白板内容失败:', error)
+      ElMessage.error('处理AI生成的白板内容失败')
+    }
+    // 重置AI store状态
+    aiStore.resetGeneratedContent()
+  }
+})
+
+// 向WBO iframe发送绘制命令
+function sendToWBO(command) {
+  const iframe = wboIframe.value
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage(command, '*')
+  }
+}
+
+// 绘制一个苹果（示例）
+function drawApple() {
+  // 苹果主体（圆形）
+  sendToWBO({
+    type: 'draw',
+    tool: 'Pencil',
+    action: 'circle',
+    data: {
+      x: 300,
+      y: 300,
+      radius: 100,
+      color: '#FF4136',
+      size: 5
+    }
+  })
+  
+  // 苹果梗（线条）
+  setTimeout(() => {
+    sendToWBO({
+      type: 'draw',
+      tool: 'Pencil',
+      action: 'line',
+      data: {
+        points: [
+          { x: 300, y: 200 },
+          { x: 280, y: 180 },
+          { x: 290, y: 160 }
+        ],
+        color: '#3D9970',
+        size: 8
+      }
+    })
+  }, 500)
+  
+  // 苹果叶子（线条）
+  setTimeout(() => {
+    sendToWBO({
+      type: 'draw',
+      tool: 'Pencil',
+      action: 'line',
+      data: {
+        points: [
+          { x: 280, y: 180 },
+          { x: 260, y: 170 },
+          { x: 270, y: 190 },
+          { x: 280, y: 180 }
+        ],
+        color: '#3D9970',
+        size: 5
+      }
+    })
+  }, 1000)
+}
+
+// 计算WBO URL
+const wboUrl = computed(() => {
+  // 确保roomKey有效，避免生成无效URL
+  const roomKey = whiteboard.value.room_key || 'new-whiteboard-' + Date.now()
+  let url = `http://localhost:8080/boards/${roomKey}`
+  if (wboToken.value) {
+    url += `?token=${wboToken.value}`
+  }
+  return url
+})
+
+// 获取WBO JWT令牌
+async function getWboToken() {
+  try {
+    const response = await fetch('/api/whiteboards/wbo-token', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    if (response.ok) {
+      const data = await response.json()
+      wboToken.value = data.token
+    }
+  } catch (error) {
+    console.error('Failed to get WBO token:', error)
+  }
+}
 
 async function loadWhiteboard() {
   if (props.isNew) return
   
   try {
-    const data = await whiteboardAPI.get(whiteboardId)
-    whiteboard.value = data.whiteboard
-    
-    if (data.whiteboard.data) {
-      loadCanvasData(data.whiteboard.data)
-    }
+    const response = await whiteboardAPI.get(whiteboardId)
+    console.log('加载白板详情结果:', response)
+    whiteboard.value = response.code === 200 ? response.data : {}
     
     await loadVersions()
   } catch (error) {
@@ -170,45 +256,12 @@ async function loadVersions() {
   
   try {
     const data = await whiteboardAPI.getVersions(whiteboard.value.id)
-    versions.value = data.versions
+    console.log('加载版本历史结果:', data)
+    // 正确处理API返回的数据格式
+    versions.value = (data.code === 200 && Array.isArray(data.data)) ? data.data : []
   } catch (error) {
     console.error('Load versions error:', error)
-  }
-}
-
-function initCanvas() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  
-  const container = canvas.parentElement
-  canvas.width = container.clientWidth
-  canvas.height = 600
-  
-  ctx.value = canvas.getContext('2d')
-  ctx.value.lineCap = 'round'
-  ctx.value.lineJoin = 'round'
-  ctx.value.strokeStyle = strokeColor.value
-  ctx.value.lineWidth = strokeWidth.value
-}
-
-function loadCanvasData(data) {
-  if (!ctx.value) return
-  
-  const img = new Image()
-  img.onload = () => {
-    ctx.value.drawImage(img, 0, 0)
-  }
-  img.src = data.imageData
-}
-
-function saveCanvasData() {
-  if (!canvasRef.value) return null
-  
-  return {
-    imageData: canvasRef.value.toDataURL('image/png'),
-    tool: currentTool.value,
-    strokeColor: strokeColor.value,
-    strokeWidth: strokeWidth.value
+    versions.value = []
   }
 }
 
@@ -227,16 +280,28 @@ async function handleSave(silent = false) {
   try {
     const data = {
       title: whiteboard.value.title || '新白板',
-      data: saveCanvasData()
+      room_key: whiteboard.value.room_key,
+      // WBO会自动保存数据，这里只保存标题和基本信息
+      data: {
+        room_key: whiteboard.value.room_key
+      }
     }
     
     if (whiteboard.value.id) {
-      await whiteboardAPI.update(whiteboard.value.id, data)
+      const updateResult = await whiteboardAPI.update(whiteboard.value.id, data)
+      console.log('更新白板结果:', updateResult)
     } else {
-      const result = await whiteboardAPI.create(data)
-      whiteboard.value.id = result.whiteboard.id
-      whiteboard.value.room_key = result.whiteboard.room_key
-      whiteboard.value.title = result.whiteboard.title
+      const createResult = await whiteboardAPI.create(data)
+      console.log('创建白板结果:', createResult)
+      
+      // 正确处理API返回的数据格式
+      if (createResult.code === 201 && createResult.data) {
+        whiteboard.value.id = createResult.data.id
+        whiteboard.value.room_key = createResult.data.room_key
+        whiteboard.value.title = createResult.data.title
+      } else {
+        throw new Error('创建白板失败: ' + (createResult.message || '未知错误'))
+      }
     }
     
     await loadVersions()
@@ -246,7 +311,7 @@ async function handleSave(silent = false) {
   } catch (error) {
     console.error('Save whiteboard error:', error)
     saveStatus.value = '保存失败'
-    if (!silent) ElMessage.error('保存失败')
+    if (!silent) ElMessage.error('保存失败: ' + (error.message || '服务器错误'))
   }
 }
 
@@ -254,7 +319,6 @@ async function rollbackVersion(version) {
   try {
     await whiteboardAPI.rollbackVersion(whiteboard.value.id, version.id)
     whiteboard.value.data = version.data
-    loadCanvasData(version.data)
     await loadVersions()
     ElMessage.success('回滚成功')
   } catch (error) {
@@ -263,84 +327,14 @@ async function rollbackVersion(version) {
   }
 }
 
-function setTool(tool) {
-  currentTool.value = tool
-}
-
-function handleColorChange() {
-  if (ctx.value) {
-    ctx.value.strokeStyle = strokeColor.value
+onMounted(async () => {
+  await getWboToken()
+  await loadWhiteboard()
+  
+  // 对于新建白板，生成一个唯一的roomKey
+  if (props.isNew && !whiteboard.value.room_key) {
+    whiteboard.value.room_key = 'wb-' + Math.random().toString(36).substr(2, 9)
   }
-}
-
-function handleWidthChange() {
-  if (ctx.value) {
-    ctx.value.lineWidth = strokeWidth.value
-  }
-}
-
-function handleMouseDown(e) {
-  if (currentTool.value === 'select') return
-  
-  isDrawing.value = true
-  const rect = canvasRef.value.getBoundingClientRect()
-  lastX.value = e.clientX - rect.left
-  lastY.value = e.clientY - rect.top
-}
-
-function handleMouseMove(e) {
-  if (!isDrawing.value || currentTool.value === 'select') return
-  
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  
-  ctx.value.beginPath()
-  ctx.value.moveTo(lastX.value, lastY.value)
-  ctx.value.lineTo(x, y)
-  
-  if (currentTool.value === 'eraser') {
-    ctx.value.globalCompositeOperation = 'destination-out'
-    ctx.value.lineWidth = strokeWidth.value * 3
-  } else {
-    ctx.value.globalCompositeOperation = 'source-over'
-    ctx.value.strokeStyle = strokeColor.value
-    ctx.value.lineWidth = strokeWidth.value
-  }
-  
-  ctx.value.stroke()
-  
-  lastX.value = x
-  lastY.value = y
-}
-
-function handleMouseUp() {
-  if (isDrawing.value) {
-    isDrawing.value = false
-    handleAutoSave()
-  }
-}
-
-function clearCanvas() {
-  if (!canvasRef.value || !ctx.value) return
-  
-  ctx.value.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-  handleAutoSave()
-}
-
-function exportImage() {
-  if (!canvasRef.value) return
-  
-  const link = document.createElement('a')
-  link.download = `${whiteboard.value.title || '白板'}.png`
-  link.href = canvasRef.value.toDataURL('image/png')
-  link.click()
-  ElMessage.success('导出成功')
-}
-
-onMounted(() => {
-  loadWhiteboard()
-  initCanvas()
 })
 
 onUnmounted(() => {
@@ -373,19 +367,11 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  padding: 10px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #e6e6e6;
-  gap: 10px;
-}
-
-.whiteboard-canvas {
+.wbo-iframe {
   display: block;
-  cursor: crosshair;
-  background: #fff;
+  width: 100%;
+  height: 600px;
+  border: none;
 }
 
 .editor-footer {

@@ -2,7 +2,7 @@
   <div class="property-panel">
     <div class="panel-header">
       <h3>属性设置</h3>
-      <el-button v-if="selectedElement" @click="clearSelection" size="small" type="text">
+      <el-button v-if="selectedElement" @click="clearSelection" size="small" link>
         <el-icon><Close /></el-icon>
       </el-button>
     </div>
