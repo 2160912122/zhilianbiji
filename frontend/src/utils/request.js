@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 const request = axios.create({
   baseURL: '/',
-  timeout: 60000, // 增加超时时间到60秒，适应AI生成内容的长时间处理
+  timeout: 120000, // 增加超时时间到120秒，适应AI生成内容的长时间处理
   withCredentials: true,
   responseType: 'json',
   headers: {

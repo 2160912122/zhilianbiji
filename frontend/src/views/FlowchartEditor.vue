@@ -21,6 +21,10 @@
               <el-icon><Share /></el-icon>
               分享
             </el-button>
+            <el-button @click="showVersions = true">
+              <el-icon><Clock /></el-icon>
+              版本历史
+            </el-button>
             <el-button type="primary" @click="handleSave">
               <el-icon><Check /></el-icon>
               保存
@@ -61,6 +65,26 @@
         </span>
       </template>
     </el-dialog>
+    
+    <el-drawer v-model="showVersions" title="版本历史" size="40%">
+      <el-timeline>
+        <el-timeline-item
+          v-for="version in versions"
+          :key="version.id"
+          :timestamp="version.updated_at"
+          placement="top"
+        >
+          <div class="version-item">
+            <div class="version-content">版本: {{ version.id }}</div>
+            <div class="version-actions">
+              <el-button link type="warning" @click="rollbackVersion(version)">
+                回滚
+              </el-button>
+            </div>
+          </div>
+        </el-timeline-item>
+      </el-timeline>
+    </el-drawer>
   </div>
 </template>
 
@@ -68,7 +92,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Check, Share } from '@element-plus/icons-vue'
+import { Back, Check, Share, Clock } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { useAIStore } from '@/store/ai'
 import FlowEditor from '@/components/FlowEditor.vue'
@@ -90,6 +114,8 @@ const graphData = ref({ nodes: {}, edges: {} })
 const shareDialogVisible = ref(false)
 const sharing = ref(false)
 const shareUrl = ref('')
+const versions = ref([])
+const showVersions = ref(false)
 
 const flowEditor = ref(null)
 
@@ -139,8 +165,39 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
       
       // 检查是否是有效的JSON格式
       if (!jsonContent.startsWith('{') || !jsonContent.endsWith('}')) {
-        ElMessage.error('AI生成的内容不是有效的JSON格式')
-        return
+        // 如果不是JSON格式，尝试根据文本描述生成流程图
+        console.log('AI生成的是文本描述，尝试根据描述生成流程图')
+        try {
+          // 从文本描述中提取流程图步骤
+          const steps = extractStepsFromDescription(jsonContent)
+          if (steps.length === 0) {
+            ElMessage.error('无法从AI生成的描述中提取流程图步骤')
+            return
+          }
+          
+          // 根据提取的步骤生成流程图数据
+          const generatedFlowchart = generateFlowchartFromSteps(steps)
+          
+          // 使用生成的流程图数据
+          graphData.value = generatedFlowchart
+          console.log('根据描述生成的流程图数据:', generatedFlowchart)
+          
+          // 为新流程图生成唯一的标题
+          if (!flowchartId && (!flowTitle.value || flowTitle.value === '未命名流程图')) {
+            flowTitle.value = `AI生成的流程图_${Date.now()}`
+          } else if (!flowTitle.value || flowTitle.value === '未命名流程图') {
+            flowTitle.value = 'AI生成的流程图'
+          }
+          
+          // 保存到服务器
+          handleSaveFlowchart(graphData.value)
+          ElMessage.success('AI生成的流程图已成功加载（根据描述生成）')
+          return
+        } catch (error) {
+          console.error('根据描述生成流程图失败:', error)
+          ElMessage.error('AI生成的内容不是有效的JSON格式，也无法从描述中提取流程图步骤')
+          return
+        }
       }
       
       // 解析AI生成的流程图数据（JSON格式）
@@ -443,9 +500,40 @@ async function loadFlowchart() {
       }
     }
     console.log('加载的流程图数据:', graphData.value)
+    
+    // 加载版本历史
+    await loadVersions()
   } catch (error) {
     console.error('加载流程图失败:', error)
     ElMessage.error('加载流程图失败')
+  }
+}
+
+async function loadVersions() {
+  if (!flowchartId) return
+  
+  try {
+    const response = await request.get(`/api/flowcharts/${flowchartId}/versions`)
+    console.log('加载版本历史结果:', response)
+    // 正确处理API返回的数据格式
+    versions.value = (response.code === 200 && Array.isArray(response.data)) ? response.data : []
+  } catch (error) {
+    console.error('Load versions error:', error)
+    versions.value = []
+  }
+}
+
+async function rollbackVersion(version) {
+  try {
+    await request.post(`/api/flowcharts/${flowchartId}/versions/${version.id}`)
+    
+    // 重新加载流程图数据
+    await loadFlowchart()
+    ElMessage.success('版本回滚成功')
+    showVersions.value = false
+  } catch (error) {
+    console.error('Rollback version error:', error)
+    ElMessage.error('版本回滚失败')
   }
 }
 
@@ -496,6 +584,10 @@ async function handleSaveFlowchart(flowData) {
     }
 
     console.log('保存成功:', response)
+    // 保存成功后加载版本历史
+    if (flowchartId) {
+      await loadVersions()
+    }
     ElMessage.success('保存成功')
     return { success: true, message: '保存成功' }
   } catch (error) {
@@ -564,6 +656,108 @@ async function handleExportFlowchart(imageData, format = 'svg') {
     console.error('导出失败:', error)
     ElMessage.error('导出失败')
   }
+}
+
+// 从文本描述中提取流程图步骤
+function extractStepsFromDescription(description) {
+  // 常见的步骤关键词
+  const stepKeywords = ['步骤', '开始', '首先', '然后', '接下来', '最后', '结束', '购物', '浏览', '选择', '结账', '支付', '完成', '加入购物车', '确认订单', '提交订单']
+  
+  // 过滤关键词（AI思考过程的标志）
+  const filterKeywords = ['我需要', '我要', '我想', '我应该', '需要', '应该', '要', '设计', '分析', '思考', '考虑', '假设', '比如', '例如']
+  
+  // 第一人称代词（通常是AI的思考）
+  const firstPersonPronouns = ['我', '我们', '咱们']
+  
+  const steps = []
+  
+  // 按句子分割文本
+  const sentences = description.split(/[。！？；;.!?]/)
+  
+  for (const sentence of sentences) {
+    const trimmedSentence = sentence.trim()
+    if (!trimmedSentence) continue
+    
+    // 检查句子是否包含步骤相关的关键词
+    const hasStepKeyword = stepKeywords.some(keyword => trimmedSentence.includes(keyword))
+    
+    // 检查句子是否包含过滤关键词（AI思考过程）
+    const hasFilterKeyword = filterKeywords.some(keyword => trimmedSentence.includes(keyword))
+    
+    // 检查句子是否包含第一人称代词（通常是AI的思考）
+    const hasFirstPersonPronoun = firstPersonPronouns.some(pronoun => trimmedSentence.includes(pronoun))
+    
+    // 只保留包含步骤关键词且不包含过滤关键词和第一人称代词的句子
+    if (hasStepKeyword && !hasFilterKeyword && !hasFirstPersonPronoun) {
+      // 清理句子，去除多余的修饰语
+      let cleanSentence = trimmedSentence
+      
+      // 去除常见的引导词
+      const leadingWords = ['首先', '然后', '接下来', '最后', '第一步', '第二步', '第三步', '第四步', '第五步']
+      for (const word of leadingWords) {
+        if (cleanSentence.startsWith(word)) {
+          cleanSentence = cleanSentence.substring(word.length).trim()
+          break
+        }
+      }
+      
+      steps.push(cleanSentence)
+    }
+  }
+  
+  // 如果没有提取到步骤，尝试从常见的购物流程中生成
+  if (steps.length === 0 && description.includes('购物')) {
+    return [
+      '开始购物',
+      '浏览商品',
+      '选择商品',
+      '加入购物车',
+      '结账',
+      '支付',
+      '购物完成'
+    ]
+  }
+  
+  return steps
+}
+
+// 根据步骤生成流程图数据
+function generateFlowchartFromSteps(steps) {
+  const nodes = {}
+  const edges = {}
+  
+  // 生成节点
+  for (let i = 0; i < steps.length; i++) {
+    const nodeId = `node_${i}`
+    // 为节点生成合理的位置，避免重叠
+    const x = 200 + (i % 2) * 400
+    const y = 150 + Math.floor(i / 2) * 200
+    
+    nodes[nodeId] = {
+      id: nodeId,
+      x: x,
+      y: y,
+      text: steps[i],
+      type: i === 0 ? 'circle' : (i === steps.length - 1 ? 'circle' : 'rect')
+    }
+  }
+  
+  // 生成边连接节点
+  for (let i = 0; i < steps.length - 1; i++) {
+    const sourceNodeId = `node_${i}`
+    const targetNodeId = `node_${i + 1}`
+    const edgeId = `edge_${i}`
+    
+    edges[edgeId] = {
+      id: edgeId,
+      source: sourceNodeId,
+      target: targetNodeId,
+      text: '',
+      type: 'polyline'
+    }
+  }
+  
+  return { nodes, edges }
 }
 
 onMounted(() => {

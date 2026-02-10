@@ -16,6 +16,7 @@
     "@vueup/vue-quill": "^1.2.0",
     "axios": "^1.13.2",
     "dayjs": "^1.11.19",
+    "echarts": "^6.0.0",
     "element-plus": "^2.13.1",
     "html2canvas": "^1.4.1",
     "marked": "^12.0.1",

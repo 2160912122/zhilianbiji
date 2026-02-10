@@ -208,11 +208,27 @@ const props = defineProps({
   isNew: {
     type: Boolean,
     default: false
+  },
+  'note-id': {
+    type: [String, Number],
+    default: null
+  },
+  'is-shared': {
+    type: Boolean,
+    default: false
+  },
+  'share-permission': {
+    type: String,
+    default: 'view'
+  },
+  'shared-note': {
+    type: Object,
+    default: null
   }
 })
 
 const route = useRoute()
-const noteId = route.params.id
+const noteId = props['note-id'] || route.params.id
 
 const note = ref({
   id: null,
@@ -318,6 +334,69 @@ function onQuillUpdate(delta) {
 async function loadNote() {
   if (props.isNew) return
   
+  // 共享模式：使用传入的 shared-note
+  if (props['is-shared'] && props['shared-note']) {
+    const noteData = props['shared-note']
+    
+    if (noteData.type === 'richtext') {
+          let content = { ops: [] }
+          if (noteData.content) {
+            if (typeof noteData.content === 'string') {
+              try {
+                const parsed = JSON.parse(noteData.content)
+                if (parsed.ops && Array.isArray(parsed.ops)) {
+                  content = parsed
+                } else if (Array.isArray(parsed)) {
+                  content = { ops: parsed }
+                } else {
+                  content = { ops: [{ insert: JSON.stringify(parsed) }] }
+                }
+              } catch (e) {
+                console.warn('Failed to parse richtext content:', e)
+                content = { ops: [{ insert: noteData.content }] }
+              }
+            } else if (typeof noteData.content === 'object') {
+              if (noteData.content.ops && Array.isArray(noteData.content.ops)) {
+                content = noteData.content
+              } else {
+                content = { ops: [{ insert: JSON.stringify(noteData.content) }] }
+              }
+            }
+          }
+          noteData.content = content
+    } else if (noteData.type === 'markdown') {
+      if (typeof noteData.content === 'object') {
+        noteData.content = JSON.stringify(noteData.content)
+      }
+    }
+    
+    note.value = noteData
+    
+    // 处理标签
+    if (Array.isArray(noteData.tags)) {
+      selectedTags.value = noteData.tags.map(t => t.name)
+    } else if (Array.isArray(noteData.tag_ids) && !props['is-shared']) {
+      // 共享模式下跳过标签 API 调用
+      // 如果返回的是tag_ids而不是tags，需要加载标签名称
+      try {
+        const tagNames = await Promise.all(
+          noteData.tag_ids.map(async (tagId) => {
+            const tag = await tagAPI.get(tagId)
+            return tag.name
+          })
+        )
+        selectedTags.value = tagNames
+      } catch (error) {
+        console.error('Load tags error:', error)
+        selectedTags.value = []
+      }
+    } else {
+      selectedTags.value = []
+    }
+    return
+  }
+  
+  // 正常模式：从API加载
   try {
     const response = await noteAPI.get(noteId)
     
@@ -404,7 +483,7 @@ function handleQuillUpdate(content) {
 }
 
 async function loadVersions() {
-  if (!note.value.id) return
+  if (!note.value.id || props['is-shared']) return
   
   try {
     const response = await noteAPI.getVersions(note.value.id)
@@ -425,6 +504,11 @@ function handleAutoSave() {
 }
 
 async function handleSave(silent = false) {
+  if (props['is-shared']) {
+    if (!silent) ElMessage.warning('共享模式下不能保存')
+    return
+  }
+  
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   
   try {
@@ -442,8 +526,15 @@ async function handleSave(silent = false) {
       }
     }
     
+    // 生成唯一的默认标题
+    let title = note.value.title
+    if (!title) {
+      const timestamp = new Date().getTime()
+      title = `未命名笔记_${timestamp}`
+    }
+    
     const data = {
-      title: note.value.title || '未命名笔记',
+      title: title,
       content: contentToSend,
       type: note.value.type,
       category_id: note.value.category_id,
@@ -485,8 +576,12 @@ async function handleShare() {
 
 async function loadExistingShares() {
   try {
-    const shares = await noteAPI.getShares(note.value.id)
-    existingShares.value = shares
+    const response = await noteAPI.getShares(note.value.id)
+    const shares = response.data || []
+    existingShares.value = shares.map(share => ({
+      ...share,
+      share_url: `${window.location.origin}/share/${share.token}`
+    }))
   } catch (error) {
     console.error('Load shares error:', error)
   }
@@ -516,7 +611,7 @@ async function generateShareLink() {
       permission: shareData.value.permission,
       expire_at: expireAt
     })
-    shareUrl.value = `${window.location.origin}${result.share_url}`
+    shareUrl.value = `${window.location.origin}/share/${result.data.share_token}`
     ElMessage.success('分享链接生成成功')
     await loadExistingShares()
   } catch (error) {
@@ -624,9 +719,13 @@ onMounted(async () => {
     }
   }
   await loadNote()
-  loadCategories()
-  loadTags()
-  loadVersions()
+  
+  // 共享模式下跳过不需要的函数调用
+  if (!props['is-shared']) {
+    loadCategories()
+    loadTags()
+    loadVersions()
+  }
 })
 
 onUnmounted(() => {

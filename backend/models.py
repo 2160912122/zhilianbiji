@@ -342,7 +342,7 @@ class TableDocumentVersion(db.Model):
             'updater': {
                 'username': self.updater.username if self.updater else '未知用户'
             },
-            'updated_at': self.updated_at.isoformat()
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
@@ -396,8 +396,8 @@ class WhiteboardVersion(db.Model):
             'data': self.data,
             'updater': {
                 'username': self.updater.username if self.updater else '未知用户'
-            },
-            'updated_at': self.updated_at.isoformat()
+            } if self.updater else {'username': '未知用户'},
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 

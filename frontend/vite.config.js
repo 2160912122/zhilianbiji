@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://localhost:5000', // Flask后端地址
         changeOrigin: true, // 必须开启
         ws: true,
+      },
+      '/share': {
+        target: 'http://localhost:5000', // Flask后端地址
+        changeOrigin: true, // 必须开启
+        ws: true,
       }
     },
     fs: {

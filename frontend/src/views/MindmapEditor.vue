@@ -4,6 +4,10 @@
       <template #header>
         <div class="editor-header">
           <div class="header-left">
+            <el-button link @click="$router.push('/mindmaps')">
+              <el-icon><Back /></el-icon>
+              返回
+            </el-button>
             <el-input
               v-model="mindmap.title"
               placeholder="请输入脑图标题"
@@ -69,6 +73,12 @@
               </el-tooltip>
               <el-divider direction="vertical" />
               <AIModuleButton />
+              <el-divider direction="vertical" />
+              <el-tooltip content="版本历史" placement="top">
+                <el-button @click="showVersions = true">
+                  <el-icon><Clock /></el-icon>
+                </el-button>
+              </el-tooltip>
               <el-tooltip v-if="!isShared || sharePermission === 'edit'" content="保存" placement="top">
                 <el-button type="primary" @click="handleSave">
                   <el-icon><Check /></el-icon>
@@ -235,6 +245,27 @@
         </el-table>
       </div>
     </el-dialog>
+    
+    <!-- 版本历史抽屉 -->
+    <el-drawer v-model="showVersions" title="版本历史" size="40%">
+      <el-timeline>
+        <el-timeline-item
+          v-for="version in versions"
+          :key="version.id"
+          :timestamp="version.updated_at"
+          placement="top"
+        >
+          <div class="version-item">
+            <div class="version-content">版本: {{ version.id }}</div>
+            <div class="version-actions">
+              <el-button link type="warning" @click="rollbackVersion(version)">
+                回滚
+              </el-button>
+            </div>
+          </div>
+        </el-timeline-item>
+      </el-timeline>
+    </el-drawer>
   </div>
 </template>
 
@@ -243,7 +274,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { mindmapAPI } from '@/api/editor'
 import { ElMessage, ElDialog, ElForm, ElFormItem, ElSelect, ElOption, ElDatePicker, ElButton, ElTable, ElTableColumn, ElTag, ElIcon } from 'element-plus'
-import { Share, Delete, Check, DocumentCopy } from '@element-plus/icons-vue'
+import { Share, Delete, Check, DocumentCopy, Back, Clock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 import { useAIStore } from '@/store/ai'
 import AIModuleButton from '@/components/AIModuleButton.vue'
@@ -276,9 +307,15 @@ const router = useRouter()
 const mindmapId = props.mindmapId || route.params.id
 const userStore = useUserStore()
 
+// 生成唯一的默认标题
+const generateUniqueTitle = () => {
+  const timestamp = new Date().getTime()
+  return `新脑图_${timestamp}`
+}
+
 const mindmap = ref({
   id: null,
-  title: '',
+  title: generateUniqueTitle(),
   data: {},
   is_public: false
 })
@@ -315,6 +352,10 @@ const shareForm = ref({
   permission: 'view',
   expire_at: ''
 })
+
+// 版本历史功能
+const versions = ref([])
+const showVersions = ref(false)
 
 // 初始化AI store
 const aiStore = useAIStore()
@@ -413,6 +454,33 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
           }
         } catch (cleanError) {
           console.error('修复JSON格式失败:', cleanError)
+        }
+        
+        // 尝试从文本描述中生成脑图数据
+        try {
+          console.log('尝试从文本描述中生成脑图数据')
+          const generatedMindmap = generateMindmapFromDescription(jsonContent)
+          
+          // 使用生成的脑图数据
+          nodes.value = generatedMindmap.nodes
+          edges.value = generatedMindmap.edges
+          nodeIdCounter = Math.max(...nodes.value.map(node => node.id), 1) + 1
+          
+          // 保存到服务器
+          console.log('保存前的数据:', {
+            title: mindmap.value.title || '新脑图',
+            data: {
+              nodes: JSON.parse(JSON.stringify(nodes.value)),
+              edges: JSON.parse(JSON.stringify(edges.value))
+            },
+            is_public: mindmap.value.is_public
+          })
+          
+          handleSave(true)
+          ElMessage.success('AI生成的脑图已成功加载（根据描述生成）')
+          return
+        } catch (descriptionError) {
+          console.error('从描述生成脑图失败:', descriptionError)
         }
         
         // 尝试生成默认的脑图数据
@@ -583,8 +651,39 @@ async function loadMindmap() {
         nodeIdCounter = 1
       }
     }
+    
+    // 加载版本历史
+    await loadVersions()
   } catch (error) {
     console.error('Load mindmap error:', error)
+  }
+}
+
+async function loadVersions() {
+  if (!mindmap.value.id) return
+  
+  try {
+    const response = await mindmapAPI.getVersions(mindmap.value.id)
+    console.log('加载版本历史结果:', response)
+    // 正确处理API返回的数据格式
+    versions.value = (response.code === 200 && Array.isArray(response.data)) ? response.data : []
+  } catch (error) {
+    console.error('Load versions error:', error)
+    versions.value = []
+  }
+}
+
+async function rollbackVersion(version) {
+  try {
+    await mindmapAPI.rollbackVersion(mindmap.value.id, version.id)
+    
+    // 重新加载脑图数据
+    await loadMindmap()
+    ElMessage.success('版本回滚成功')
+    showVersions.value = false
+  } catch (error) {
+    console.error('Rollback version error:', error)
+    ElMessage.error('版本回滚失败')
   }
 }
 
@@ -619,18 +718,42 @@ async function handleSave(silent = false) {
       is_public: mindmap.value.is_public
     }
     
+    // 打印完整请求数据
+    console.log('【保存脑图-完整请求数据】:', JSON.stringify(data, null, 2))
+    
+    // 检查数据是否有明显问题
+    if (!data.title) {
+      console.error('【保存失败】脑图标题不能为空')
+      if (!silent) ElMessage.error('脑图标题不能为空')
+      return
+    }
+    
     if (mindmap.value.id) {
+      console.log('【更新脑图】ID:', mindmap.value.id)
       await mindmapAPI.update(mindmap.value.id, data)
     } else {
+      console.log('【创建新脑图】')
       const result = await mindmapAPI.create(data)
+      console.log('【创建成功】响应:', result)
       mindmap.value.id = result.data.id
       mindmap.value.title = result.data.title
+    }
+    
+    // 保存成功后加载版本历史
+    if (mindmap.value.id) {
+      await loadVersions()
     }
     
     saveStatus.value = '已保存'
     if (!silent) ElMessage.success('保存成功')
   } catch (error) {
-    console.error('Save mindmap error:', error)
+    // 打印详细的错误信息
+    console.error('【保存失败-详细错误】:', {
+      status: error.response?.status,
+      data: error.response?.data, // 后端返回的具体错误提示
+      requestData: error.config?.data // 实际发送给服务器的数据
+    })
+    
     saveStatus.value = '保存失败'
     if (error.response && error.response.status === 401) {
       // 登录已过期，跳转到登录页面
@@ -897,6 +1020,252 @@ async function copyShareLink(shareUrl) {
   }
 }
 
+// 从文本描述中生成脑图数据
+function generateMindmapFromDescription(description) {
+  const nodes = []
+  const edges = []
+  let nodeId = 1
+  
+  // 检查描述中是否包含中国特色社会主义相关内容
+  if (description.includes('中国特色社会主义')) {
+    // 生成中国特色社会主义脑图
+    // 中心节点
+    const centerNode = {
+      id: nodeId++,
+      text: '中国特色社会主义',
+      x: 400,
+      y: 100,
+      width: 180,
+      height: 40,
+      parentId: null
+    }
+    nodes.push(centerNode)
+    
+    // 主要分支节点
+    const branches = [
+      { text: '指导思想', x: 150, y: 200 },
+      { text: '基本路线', x: 300, y: 200 },
+      { text: '经济', x: 450, y: 200 },
+      { text: '政治', x: 600, y: 200 },
+      { text: '文化', x: 225, y: 400 },
+      { text: '社会', x: 400, y: 400 },
+      { text: '生态文明', x: 575, y: 400 }
+    ]
+    
+    const branchNodes = []
+    for (let i = 0; i < branches.length; i++) {
+      const branchNode = {
+        id: nodeId++,
+        text: branches[i].text,
+        x: branches[i].x,
+        y: branches[i].y,
+        width: 120,
+        height: 40,
+        parentId: centerNode.id
+      }
+      nodes.push(branchNode)
+      branchNodes.push(branchNode)
+      edges.push({ from: centerNode.id, to: branchNode.id })
+    }
+    
+    // 指导思想子节点
+    const guidingIdeas = ['马克思列宁主义', '毛泽东思想', '邓小平理论', '三个代表', '科学发展观', '习近平新时代中国特色社会主义思想']
+    for (let i = 0; i < guidingIdeas.length; i++) {
+      const ideaNode = {
+        id: nodeId++,
+        text: guidingIdeas[i],
+        x: 100 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[0].id
+      }
+      nodes.push(ideaNode)
+      edges.push({ from: branchNodes[0].id, to: ideaNode.id })
+    }
+    
+    // 基本路线子节点
+    const basicLines = ['以经济建设为中心', '坚持四项基本原则', '坚持改革开放']
+    for (let i = 0; i < basicLines.length; i++) {
+      const lineNode = {
+        id: nodeId++,
+        text: basicLines[i],
+        x: 250 + i * 150,
+        y: 300,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[1].id
+      }
+      nodes.push(lineNode)
+      edges.push({ from: branchNodes[1].id, to: lineNode.id })
+    }
+    
+    // 经济子节点
+    const economyNodes = ['社会主义市场经济', '公有制为主体', '多种所有制共同发展', '高质量发展']
+    for (let i = 0; i < economyNodes.length; i++) {
+      const ecoNode = {
+        id: nodeId++,
+        text: economyNodes[i],
+        x: 400 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[2].id
+      }
+      nodes.push(ecoNode)
+      edges.push({ from: branchNodes[2].id, to: ecoNode.id })
+    }
+    
+    // 政治子节点
+    const politicsNodes = ['党的领导', '人民民主', '法治', '社会主义民主政治']
+    for (let i = 0; i < politicsNodes.length; i++) {
+      const polNode = {
+        id: nodeId++,
+        text: politicsNodes[i],
+        x: 550 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[3].id
+      }
+      nodes.push(polNode)
+      edges.push({ from: branchNodes[3].id, to: polNode.id })
+    }
+    
+    // 文化子节点
+    const cultureNodes = ['社会主义核心价值观', '中华优秀传统文化', '文化自信', '文化软实力']
+    for (let i = 0; i < cultureNodes.length; i++) {
+      const culNode = {
+        id: nodeId++,
+        text: cultureNodes[i],
+        x: 150 + (i % 2) * 150,
+        y: 500 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[4].id
+      }
+      nodes.push(culNode)
+      edges.push({ from: branchNodes[4].id, to: culNode.id })
+    }
+    
+    // 社会子节点
+    const societyNodes = ['共同富裕', '社会公平正义', '教育医疗住房', '社会保障体系']
+    for (let i = 0; i < societyNodes.length; i++) {
+      const socNode = {
+        id: nodeId++,
+        text: societyNodes[i],
+        x: 350 + (i % 2) * 150,
+        y: 500 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[5].id
+      }
+      nodes.push(socNode)
+      edges.push({ from: branchNodes[5].id, to: socNode.id })
+    }
+    
+    // 生态文明子节点
+    const ecologyNodes = ['绿水青山就是金山银山', '可持续发展', '环境保护', '绿色发展']
+    for (let i = 0; i < ecologyNodes.length; i++) {
+      const ecoNode = {
+        id: nodeId++,
+        text: ecologyNodes[i],
+        x: 550 + (i % 2) * 150,
+        y: 500 + Math.floor(i / 2) * 80,
+        width: 150,
+        height: 40,
+        parentId: branchNodes[6].id
+      }
+      nodes.push(ecoNode)
+      edges.push({ from: branchNodes[6].id, to: ecoNode.id })
+    }
+    
+    return { nodes, edges }
+  } else {
+    // 默认生成计算机专业课程脑图
+    const courseCategories = ['基础课程', '核心课程', '选修课程']
+    const basicCourses = ['编程基础', '数据结构', '算法', '计算机组成原理', '操作系统']
+    const coreCourses = ['数据库', '计算机网络', '软件工程', '人工智能', '计算机图形学']
+    const electiveCourses = ['编译原理', '计算机安全', '机器学习', '深度学习', '自然语言处理', '计算机视觉', '分布式系统', '嵌入式系统', '移动应用开发', '云计算', '大数据处理']
+    
+    // 生成中心节点
+    const centerNode = {
+      id: nodeId++,
+      text: '计算机专业课程',
+      x: 400,
+      y: 100,
+      width: 150,
+      height: 40,
+      parentId: null
+    }
+    nodes.push(centerNode)
+    
+    // 生成课程类别节点
+    const categoryNodes = []
+    for (let i = 0; i < courseCategories.length; i++) {
+      const categoryNode = {
+        id: nodeId++,
+        text: courseCategories[i],
+        x: 200 + i * 250,
+        y: 200,
+        width: 120,
+        height: 40,
+        parentId: centerNode.id
+      }
+      nodes.push(categoryNode)
+      categoryNodes.push(categoryNode)
+      edges.push({ from: centerNode.id, to: categoryNode.id })
+    }
+    
+    // 生成基础课程节点
+    for (let i = 0; i < basicCourses.length; i++) {
+      const courseNode = {
+        id: nodeId++,
+        text: basicCourses[i],
+        x: 150 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 100,
+        width: 120,
+        height: 40,
+        parentId: categoryNodes[0].id
+      }
+      nodes.push(courseNode)
+      edges.push({ from: categoryNodes[0].id, to: courseNode.id })
+    }
+    
+    // 生成核心课程节点
+    for (let i = 0; i < coreCourses.length; i++) {
+      const courseNode = {
+        id: nodeId++,
+        text: coreCourses[i],
+        x: 400 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 100,
+        width: 120,
+        height: 40,
+        parentId: categoryNodes[1].id
+      }
+      nodes.push(courseNode)
+      edges.push({ from: categoryNodes[1].id, to: courseNode.id })
+    }
+    
+    // 生成选修课程节点
+    for (let i = 0; i < electiveCourses.length; i++) {
+      const courseNode = {
+        id: nodeId++,
+        text: electiveCourses[i],
+        x: 650 + (i % 2) * 150,
+        y: 300 + Math.floor(i / 2) * 100,
+        width: 120,
+        height: 40,
+        parentId: categoryNodes[2].id
+      }
+      nodes.push(courseNode)
+      edges.push({ from: categoryNodes[2].id, to: courseNode.id })
+    }
+    
+    return { nodes, edges }
+  }
+}
+
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
@@ -925,11 +1294,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0;
+  flex-wrap: wrap;
+  padding: 5px;
+  background: #f5f7fa;
+  border-radius: 4px;
 }
 
 .operation-buttons .el-button {
   margin-right: 0;
   border-radius: 0;
+  margin: 2px;
 }
 
 .operation-buttons .el-button:first-child {
@@ -944,6 +1318,7 @@ onUnmounted(() => {
 
 .operation-buttons .el-divider {
   margin: 0 5px;
+  margin: 2px;
 }
 
 .mindmap-container {

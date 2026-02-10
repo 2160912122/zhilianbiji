@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>白板测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    iframe {
+      width: 800px;
+      height: 600px;
+      border: 1px solid #ccc;
+      margin-top: 20px;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>白板绘制测试</h1>
+  <p>点击下方按钮测试绘制功能：</p>
+  <button onclick="drawLine()">绘制线条</button>
+  <button onclick="drawCircle()">绘制圆形</button>
+  <button onclick="drawApple()">绘制苹果</button>
+  
+  <iframe id="whiteboard" src="http://localhost:8080/boards/test"></iframe>
+  
+  <script>
+    const iframe = document.getElementById('whiteboard');
+    
+    function sendCommand(command) {
+      if (iframe && iframe.contentWindow) {
+        console.log('发送命令:', command);
+        iframe.contentWindow.postMessage(command, '*');
+      }
+    }
+    
+    function drawLine() {
+      sendCommand({
+        type: 'draw',
+        tool: 'Pencil',
+        action: 'line',
+        data: {
+          points: [{x: 100, y: 100}, {x: 200, y: 150}, {x: 300, y: 100}],
+          color: '#FF4136',
+          size: 3
+        }
+      });
+    }
+    
+    function drawCircle() {
+      sendCommand({
+        type: 'draw',
+        tool: 'Pencil',
+        action: 'circle',
+        data: {
+          x: 400,
+          y: 200,
+          radius: 80,
+          color: '#0074D9',
+          size: 4
+        }
+      });
+    }
+    
+    function drawApple() {
+      // 苹果主体
+      sendCommand({
+        type: 'draw',
+        tool: 'Pencil',
+        action: 'circle',
+        data: {
+          x: 250,
+          y: 350,
+          radius: 100,
+          color: '#FF4136',
+          size: 5
+        }
+      });
+      
+      // 苹果茎
+      setTimeout(() => {
+        sendCommand({
+          type: 'draw',
+          tool: 'Pencil',
+          action: 'line',
+          data: {
+            points: [{x: 250, y: 250}, {x: 230, y: 220}],
+            color: '#3D9970',
+            size: 3
+          }
+        });
+      }, 500);
+      
+      // 苹果叶子
+      setTimeout(() => {
+        sendCommand({
+          type: 'draw',
+          tool: 'Pencil',
+          action: 'line',
+          data: {
+            points: [{x: 230, y: 220}, {x: 210, y: 200}, {x: 230, y: 210}, {x: 250, y: 200}, {x: 230, y: 220}],
+            color: '#3D9970',
+            size: 3
+          }
+        });
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

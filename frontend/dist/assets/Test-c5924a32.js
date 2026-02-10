@@ -1,0 +1,1 @@
+import{_ as t,b as _,c,e as s}from"./index-911a223c.js";const n={},o={class:"test"};function a(r,e){return _(),c("div",o,[...e[0]||(e[0]=[s("h1",null,"测试页面",-1),s("p",null,"这是一个测试页面，用于测试前端路由是否正常工作。",-1)])])}const d=t(n,[["render",a],["__scopeId","data-v-269e1bc6"]]);export{d as default};

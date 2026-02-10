@@ -101,7 +101,9 @@ const sendMessage = async () => {
         content: msg.content
       }))
       
+      console.log('发送AI请求:', aiMessages)
       const response = await aiAPI.chat(aiMessages)
+      console.log('收到AI响应:', response)
       
       if (response.code === 200) {
         // 添加AI回复
@@ -116,6 +118,7 @@ const sendMessage = async () => {
         ElMessage.error(response.message || 'AI回复失败')
       }
     } catch (error) {
+      console.error('AI请求错误:', error)
       ElMessage.error('服务器错误，请稍后重试')
     } finally {
       isLoading.value = false

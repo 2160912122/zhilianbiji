@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from openai import OpenAI
+from sqlalchemy import text
 
 # 加载.env文件中的环境变量
 from dotenv import load_dotenv
@@ -17,7 +18,7 @@ load_dotenv()
 
 # 导入自定义模块
 from config import get_config
-from models import db, bcrypt, User, Note, NoteVersion, Category, Tag, Flowchart, FlowchartVersion, TableDocument, Whiteboard, Mindmap, ShareLink
+from models import db, bcrypt, User, Note, NoteVersion, Category, Tag, Flowchart, FlowchartVersion, TableDocument, TableDocumentVersion, Whiteboard, WhiteboardVersion, Mindmap, MindmapVersion, ShareLink
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -224,6 +225,9 @@ def update_note(note_id):
             return jsonify({'code': 404, 'message': '笔记不存在或无权限访问'}), 404
         
         data = request.json
+        
+        # 保存旧版本
+        note.save_version(user_id)
         
         # 更新笔记字段
         note.title = data.get('title', note.title)
@@ -713,6 +717,114 @@ def share_flowchart(flowchart_id):
         }), 200
     except Exception as e:
         logger.error(f"共享流程图接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/notes/<int:note_id>/shares', methods=['GET'])
+@jwt_required()
+def get_note_shares(note_id):
+    """获取笔记的分享链接列表"""
+    try:
+        user_id = get_jwt_identity()
+        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
+        
+        if not note:
+            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
+        
+        # 获取笔记的所有分享链接
+        share_links = ShareLink.query.filter_by(note_id=note_id).all()
+        
+        # 转换为前端需要的格式
+        shares = []
+        for link in share_links:
+            shares.append({
+                'token': link.token,
+                'permission': link.permission,
+                'expire_at': link.expire_at.isoformat() if link.expire_at else None,
+                'created_at': link.created_at.isoformat()
+            })
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': shares
+        }), 200
+    except Exception as e:
+        logger.error(f"获取笔记分享链接列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/notes/<int:note_id>/share', methods=['POST'])
+@jwt_required()
+def share_note(note_id):
+    """共享笔记"""
+    try:
+        user_id = get_jwt_identity()
+        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
+        
+        if not note:
+            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
+        
+        data = request.json
+        permission = data.get('permission', 'view')
+        expire_at = data.get('expireAt')
+        
+        # 创建或更新共享链接
+        share_link = ShareLink.query.filter_by(note_id=note_id, permission=permission).first()
+        
+        if not share_link:
+            share_link = ShareLink(
+                note_id=note_id,
+                token=str(uuid.uuid4()),
+                permission=permission,
+                expire_at=expire_at
+            )
+            db.session.add(share_link)
+        else:
+            share_link.expire_at = expire_at
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '共享成功',
+            'data': {
+                'share_token': share_link.token,
+                'permission': share_link.permission,
+                'expire_at': share_link.expire_at.isoformat() if share_link.expire_at else None
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"共享笔记接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/notes/<int:note_id>/shares/<string:token>', methods=['DELETE'])
+@jwt_required()
+def delete_note_share(note_id, token):
+    """删除笔记的分享链接"""
+    try:
+        user_id = get_jwt_identity()
+        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
+        
+        if not note:
+            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
+        
+        # 查找并删除分享链接
+        share_link = ShareLink.query.filter_by(note_id=note_id, token=token).first()
+        
+        if not share_link:
+            return jsonify({'code': 404, 'message': '分享链接不存在'}), 404
+        
+        db.session.delete(share_link)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"删除笔记分享链接接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 
@@ -1293,22 +1405,69 @@ def create_mindmap():
     """创建脑图"""
     try:
         user_id = get_jwt_identity()
+        logger.info(f"接收到创建脑图请求，用户ID: {user_id}")
+        
+        # 检查请求格式
+        if not request.is_json:
+            logger.error("请求格式错误，需要JSON格式")
+            return jsonify({'code': 400, 'message': '请求格式错误，需要JSON格式'}), 400
+        
         data = request.json
+        logger.info(f"请求数据: {data}")
+        
+        if not data:
+            logger.error("请求数据为空")
+            return jsonify({'code': 400, 'message': '请求数据为空'}), 400
+        
+        # 验证必要字段
         title = data.get('title', '新脑图')
+        if not title:
+            logger.error("脑图标题不能为空")
+            return jsonify({'code': 400, 'message': '脑图标题不能为空'}), 400
         
-        # 检查是否已存在同名脑图
-        existing_mindmap = Mindmap.query.filter_by(user_id=user_id, title=title).first()
-        if existing_mindmap:
-            return jsonify({'code': 400, 'message': '已存在同名脑图，请使用其他名称'}), 400
+        logger.info(f"脑图标题: {title}")
         
+        # 获取并验证数据结构
+        mindmap_data = data.get('data', {})
+        if not isinstance(mindmap_data, dict):
+            logger.error("脑图数据格式错误，需要对象格式")
+            return jsonify({'code': 400, 'message': '脑图数据格式错误，需要对象格式'}), 400
+        
+        # 确保nodes和edges字段存在且格式正确
+        if 'nodes' not in mindmap_data:
+            mindmap_data['nodes'] = []
+        if 'edges' not in mindmap_data:
+            mindmap_data['edges'] = []
+        
+        if not isinstance(mindmap_data['nodes'], list):
+            logger.error("nodes字段格式错误，需要数组格式")
+            return jsonify({'code': 400, 'message': 'nodes字段格式错误，需要数组格式'}), 400
+        
+        if not isinstance(mindmap_data['edges'], list):
+            logger.error("edges字段格式错误，需要数组格式")
+            return jsonify({'code': 400, 'message': 'edges字段格式错误，需要数组格式'}), 400
+        
+        # 处理is_public字段
+        is_public = data.get('is_public', False)
+        # 确保is_public是布尔值
+        is_public = bool(is_public)
+        
+        logger.info(f"脑图数据: {mindmap_data}")
+        logger.info(f"是否公开: {is_public}")
+        logger.info(f"是否公开类型: {type(is_public)}")
+        
+        # 创建脑图对象
         mindmap = Mindmap(
             title=title,
-            data=data.get('data', {}),
+            data=mindmap_data,
+            is_public=is_public,
             user_id=user_id
         )
         
         db.session.add(mindmap)
         db.session.commit()
+        
+        logger.info(f"脑图创建成功，ID: {mindmap.id}")
         
         return jsonify({
             'code': 201,
@@ -1317,7 +1476,13 @@ def create_mindmap():
         }), 201
     except Exception as e:
         logger.error(f"创建脑图接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+        # 捕获并返回具体的验证错误
+        if isinstance(e, ValueError):
+            return jsonify({'code': 400, 'message': f'数据验证错误: {str(e)}'}), 400
+        elif isinstance(e, TypeError):
+            return jsonify({'code': 400, 'message': f'数据类型错误: {str(e)}'}), 400
+        else:
+            return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 
 @app.route('/api/mindmaps/<int:mindmap_id>', methods=['GET'])
@@ -1608,7 +1773,7 @@ def ai_chat():
         client = OpenAI(
             api_key=qianfan_api_key,
             base_url=qianfan_base_url,
-            timeout=60  # 增加超时时间到60秒，适应AI生成内容的长时间处理
+            timeout=120  # 增加超时时间到120秒，与前端保持一致，适应AI生成内容的长时间处理
         )
         logger.info("OpenAI客户端初始化成功")
         
@@ -1647,7 +1812,12 @@ def ai_chat():
                         logger.info("choice包含message属性")
                         if hasattr(first_choice.message, 'content'):
                             content = first_choice.message.content
-                            logger.info(f"成功提取content: {content[:50]}...")
+                            # 检查reasoning_content字段（对于推理模型）
+                            if not content and hasattr(first_choice.message, 'reasoning_content'):
+                                content = first_choice.message.reasoning_content
+                                logger.info(f"成功提取reasoning_content: {content[:50]}...")
+                            else:
+                                logger.info(f"成功提取content: {content[:50]}...")
                             return jsonify({
                                 'code': 200,
                                 'message': 'success',
@@ -1738,6 +1908,279 @@ def internal_error(error):
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory('static', filename)
+
+# -------------------------- 分享内容接口 --------------------------
+@app.route('/api/share/<string:token>', methods=['GET'])
+def get_shared_content(token):
+    """获取分享内容"""
+    try:
+        # 查找分享链接
+        share_link = ShareLink.query.filter_by(token=token).first()
+        if not share_link:
+            return jsonify({'code': 404, 'message': '分享链接不存在'}), 404
+        
+        # 检查是否过期
+        if share_link.expire_at and share_link.expire_at < datetime.now():
+            return jsonify({'code': 410, 'message': '分享链接已过期'}), 410
+        
+        # 根据类型获取内容
+        if share_link.note_id:
+            note = Note.query.get(share_link.note_id)
+            if not note:
+                return jsonify({'code': 404, 'message': '分享的笔记不存在'}), 404
+            return jsonify({
+                'code': 200,
+                'message': '获取成功',
+                'type': 'note',
+                'permission': share_link.permission,
+                'note': note.to_full_dict()
+            }), 200
+        elif share_link.flowchart_id:
+            flowchart = Flowchart.query.get(share_link.flowchart_id)
+            if not flowchart:
+                return jsonify({'code': 404, 'message': '分享的流程图不存在'}), 404
+            return jsonify({
+                'code': 200,
+                'message': '获取成功',
+                'type': 'flowchart',
+                'permission': share_link.permission,
+                'flowchart': flowchart.to_dict()
+            }), 200
+        elif share_link.mindmap_id:
+            mindmap = Mindmap.query.get(share_link.mindmap_id)
+            if not mindmap:
+                return jsonify({'code': 404, 'message': '分享的脑图不存在'}), 404
+            return jsonify({
+                'code': 200,
+                'message': '获取成功',
+                'type': 'mindmap',
+                'permission': share_link.permission,
+                'mindmap': mindmap.to_dict()
+            }), 200
+        else:
+            return jsonify({'code': 404, 'message': '分享链接无效'}), 404
+    except Exception as e:
+        logger.error(f"获取分享内容接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/share/<string:token>', methods=['GET'])
+def get_shared_content_html(token):
+    """获取分享内容（直接返回HTML）"""
+    try:
+        # 查找分享链接
+        share_link = ShareLink.query.filter_by(token=token).first()
+        if not share_link:
+            return '''
+            <html>
+            <head>
+                <title>分享链接无效</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .error { color: red; font-size: 24px; }
+                </style>
+            </head>
+            <body>
+                <div class="error">分享链接无效或已过期</div>
+                <p>请检查链接是否正确，或联系分享者获取新的链接</p>
+            </body>
+            </html>
+            ''', 404
+        
+        # 检查是否过期
+        if share_link.expire_at and share_link.expire_at < datetime.now():
+            return '''
+            <html>
+            <head>
+                <title>分享链接已过期</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .error { color: red; font-size: 24px; }
+                </style>
+            </head>
+            <body>
+                <div class="error">分享链接已过期</div>
+                <p>请联系分享者获取新的链接</p>
+            </body>
+            </html>
+            ''', 410
+        
+        # 根据类型返回HTML内容
+        if share_link.note_id:
+            note = Note.query.get(share_link.note_id)
+            if not note:
+                return '''
+                <html>
+                <head>
+                    <title>分享内容不存在</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                        .error { color: red; font-size: 24px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error">分享的内容不存在</div>
+                    <p>请联系分享者获取新的链接</p>
+                </body>
+                </html>
+                ''', 404
+            
+            # 生成笔记的HTML内容
+            content = note.content
+            if isinstance(content, str):
+                try:
+                    import json
+                    content_obj = json.loads(content)
+                    if isinstance(content_obj, dict) and 'ops' in content_obj:
+                        # 处理富文本内容
+                        html_content = ''
+                        for op in content_obj['ops']:
+                            if 'insert' in op:
+                                html_content += op['insert'].replace('\n', '<br>')
+                        content = html_content
+                except:
+                    # 如果解析失败，直接使用原始内容
+                    content = content.replace('\n', '<br>')
+            
+            return f'''
+            <html>
+            <head>
+                <title>{note.title}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
+                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
+                    .content {{ margin-top: 20px; line-height: 1.6; }}
+                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
+                </style>
+            </head>
+            <body>
+                <h1>{note.title}</h1>
+                <div class="content">{content}</div>
+                <div class="meta">
+                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
+                </div>
+            </body>
+            </html>
+            '''
+        elif share_link.flowchart_id:
+            flowchart = Flowchart.query.get(share_link.flowchart_id)
+            if not flowchart:
+                return '''
+                <html>
+                <head>
+                    <title>分享内容不存在</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                        .error { color: red; font-size: 24px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error">分享的内容不存在</div>
+                    <p>请联系分享者获取新的链接</p>
+                </body>
+                </html>
+                ''', 404
+            
+            return f'''
+            <html>
+            <head>
+                <title>{flowchart.title}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
+                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
+                    .content {{ margin-top: 20px; }}
+                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
+                </style>
+            </head>
+            <body>
+                <h1>{flowchart.title}</h1>
+                <div class="content">
+                    <p>这是一个流程图分享</p>
+                    <p>描述: {flowchart.description or '无'}</p>
+                </div>
+                <div class="meta">
+                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
+                </div>
+            </body>
+            </html>
+            '''
+        elif share_link.mindmap_id:
+            mindmap = Mindmap.query.get(share_link.mindmap_id)
+            if not mindmap:
+                return '''
+                <html>
+                <head>
+                    <title>分享内容不存在</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                        .error { color: red; font-size: 24px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error">分享的内容不存在</div>
+                    <p>请联系分享者获取新的链接</p>
+                </body>
+                </html>
+                ''', 404
+            
+            return f'''
+            <html>
+            <head>
+                <title>{mindmap.title}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
+                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
+                    .content {{ margin-top: 20px; }}
+                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
+                </style>
+            </head>
+            <body>
+                <h1>{mindmap.title}</h1>
+                <div class="content">
+                    <p>这是一个脑图分享</p>
+                </div>
+                <div class="meta">
+                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
+                </div>
+            </body>
+            </html>
+            '''
+        else:
+            return '''
+            <html>
+            <head>
+                <title>分享链接无效</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .error { color: red; font-size: 24px; }
+                </style>
+            </head>
+            <body>
+                <div class="error">分享链接无效</div>
+                <p>请联系分享者获取新的链接</p>
+            </body>
+            </html>
+            ''', 404
+    except Exception as e:
+        logger.error(f"获取分享内容HTML接口异常: {str(e)}", exc_info=True)
+        return '''
+        <html>
+        <head>
+            <title>服务器错误</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                .error { color: red; font-size: 24px; }
+            </style>
+        </head>
+        <body>
+            <div class="error">服务器内部错误</div>
+            <p>请稍后重试</p>
+        </body>
+        </html>
+        ''', 500
 
 # -------------------------- 主函数 --------------------------
 if __name__ == '__main__':

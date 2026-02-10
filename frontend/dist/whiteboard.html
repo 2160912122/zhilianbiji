@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地白板</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: white;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .whiteboard {
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .whiteboard-content {
+            padding: 20px;
+            height: 100%;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="whiteboard">
+        <div class="whiteboard-content">
+            <h1>本地白板</h1>
+        </div>
+    </div>
+    <script>
+        console.log('本地白板加载完成');
+    </script>
+</body>
+</html>

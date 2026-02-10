@@ -135,7 +135,20 @@ const routes = [
   {
     path: '/share/:token',
     name: 'SharedContent',
-    component: () => import('@/views/SharedContent.vue')
+    beforeEnter: (to, from, next) => {
+      // 重定向到后端的分享内容接口
+      window.location.href = `http://localhost:5000/share/${to.params.token}`
+    }
+  },
+  {
+    path: '/test',
+    name: 'Test',
+    component: () => import('@/views/Test.vue')
+  },
+  {
+    path: '/test/:id',
+    name: 'TestDynamic',
+    component: () => import('@/views/Test.vue')
   },
   {
     path: '/:pathMatch(.*)*',
@@ -156,6 +169,13 @@ router.beforeEach((to, from, next) => {
       token = localStorage.getItem('token') || ''
     } catch (e) {
       token = ''
+    }
+
+    // 跳过分享链接的权限检查
+    if (to.path.startsWith('/share/')) {
+      console.log('访问分享链接，跳过权限检查:', to.path)
+      next()
+      return
     }
 
     // 1. 访问登录/注册页：如果有token，直接跳dashboard

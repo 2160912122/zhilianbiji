@@ -72,6 +72,12 @@ onMounted(async () => {
       return
     }
     
+    // 检查响应格式是否正确
+    if (!responseData.code || responseData.code !== 200) {
+      showError('error', '分享链接无效', responseData.message || '无法访问分享的内容')
+      return
+    }
+    
     data.value = responseData
     contentType.value = responseData.type
     
