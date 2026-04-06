@@ -90,10 +90,15 @@ const generateUniqueTitle = () => {
   return `新白板_${timestamp}`
 }
 
+// 生成唯一的room_key
+const generateUniqueRoomKey = () => {
+  return 'wb-' + Math.random().toString(36).substr(2, 9)
+}
+
 const whiteboard = ref({
   id: null,
   title: generateUniqueTitle(),
-  room_key: '',
+  room_key: generateUniqueRoomKey(),
   data: {}
 })
 
@@ -866,9 +871,9 @@ onMounted(async () => {
   await getWboToken()
   await loadWhiteboard()
   
-  // 对于新建白板，生成一个唯一的roomKey
+  // 对于新建白板，确保room_key已经生成
   if (props.isNew && !whiteboard.value.room_key) {
-    whiteboard.value.room_key = 'wb-' + Math.random().toString(36).substr(2, 9)
+    whiteboard.value.room_key = generateUniqueRoomKey()
   }
 })
 

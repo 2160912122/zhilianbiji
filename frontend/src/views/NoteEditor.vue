@@ -112,6 +112,10 @@
             <el-option label="30天" value="30d" />
           </el-select>
         </el-form-item>
+        <el-form-item label="实时协作">
+          <el-switch v-model="shareData.is_collaborative" />
+          <span class="collab-tip">开启后，多人可同时编辑</span>
+        </el-form-item>
         <el-form-item label="分享链接" v-if="shareUrl">
           <el-input v-model="shareUrl" readonly>
             <template #append>
@@ -201,6 +205,8 @@ import { categoryAPI, tagAPI } from '@/api/common'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAIStore } from '@/store/ai'
 import AIModuleButton from '@/components/AIModuleButton.vue'
+// 导入WebSocket服务
+import { useSocket } from '@/utils/socket'
 
 const Delta = Quill.import('delta')
 
@@ -224,6 +230,14 @@ const props = defineProps({
   'shared-note': {
     type: Object,
     default: null
+  },
+  'is-collaborative': {
+    type: Boolean,
+    default: false
+  },
+  'room-id': {
+    type: String,
+    default: null
   }
 })
 
@@ -246,11 +260,21 @@ const showVersions = ref(false)
 const selectedVersion = ref(null)
 const versions = ref([])
 const shareDialogVisible = ref(false)
-const shareData = ref({ permission: 'view', expireAt: '' })
+const shareData = ref({ permission: 'view', expireAt: '', is_collaborative: false })
 const shareUrl = ref('')
 const shareExpireDate = ref('')
 const existingShares = ref([])
 const saveStatus = ref('')
+
+// 协作相关属性
+const docVersion = ref(0)
+const isSaving = ref(false)
+
+// 使用WebSocket服务
+const { connected, onlineUsers, initSocket, joinRoom, leaveRoom, syncDocument, onDocumentUpdated, getDocumentState, onDocumentState } = useSocket({
+  id: localStorage.getItem('user_id') || `guest_${Math.random().toString(36).substr(2, 9)}`,
+  username: localStorage.getItem('username') || `用户${Math.random().toString(36).substr(2, 5)}`
+})
 
 // 初始化AI store
 const aiStore = useAIStore()
@@ -504,9 +528,20 @@ function handleAutoSave() {
 }
 
 async function handleSave(silent = false) {
-  if (props['is-shared']) {
-    if (!silent) ElMessage.warning('共享模式下不能保存')
-    return
+  // 协作模式下通过WebSocket同步，不直接保存到后端
+  if (props['is-collaborative'] || props['is-shared']) {
+    if (props['is-collaborative']) {
+      syncDocumentContent()
+      if (!silent) saveStatus.value = '已同步到协作房间'
+    } else {
+      // 非协作共享模式：检查权限，允许编辑权限的用户保存
+      if (props['share-permission'] === 'edit') {
+        // 继续执行保存逻辑
+      } else if (!silent) {
+        ElMessage.warning('共享模式下不能保存')
+        return
+      }
+    }
   }
   
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
@@ -556,6 +591,52 @@ async function handleSave(silent = false) {
     console.error('Save note error:', error)
     saveStatus.value = '保存失败'
     if (!silent) ElMessage.error('保存失败')
+  }
+}
+
+// 同步文档内容到协作房间
+function syncDocumentContent() {
+  if (!note.value.id || !props['is-collaborative']) return
+  
+  docVersion.value++
+  let contentToSync = note.value.content
+  
+  if (note.value.type === 'richtext' && typeof note.value.content === 'object') {
+    contentToSync = JSON.stringify(note.value.content)
+  }
+  
+  syncDocument(note.value.id, 'note', contentToSync, docVersion.value)
+}
+
+// 处理从WebSocket接收到的文档更新
+function updateDocumentFromSync(syncedContent) {
+  if (!syncedContent) return
+  
+  try {
+    if (note.value.type === 'richtext') {
+      // 富文本格式：解析JSON并更新内容
+      let parsedContent = { ops: [] }
+      if (typeof syncedContent === 'string') {
+        parsedContent = JSON.parse(syncedContent)
+      } else if (typeof syncedContent === 'object') {
+        parsedContent = syncedContent
+      }
+      
+      note.value.content = parsedContent
+      
+      // 更新Quill编辑器
+      if (quillInstance) {
+        quillInstance.setContents(parsedContent)
+      }
+    } else if (note.value.type === 'markdown') {
+      // Markdown格式：直接更新内容
+      note.value.content = syncedContent
+    }
+    
+    saveStatus.value = '已从协作房间同步'
+  } catch (error) {
+    console.error('Update document from sync error:', error)
+    ElMessage.error('同步文档内容失败')
   }
 }
 
@@ -609,7 +690,8 @@ async function generateShareLink() {
 
     const result = await noteAPI.share(note.value.id, {
       permission: shareData.value.permission,
-      expire_at: expireAt
+      expire_at: expireAt,
+      is_collaborative: shareData.value.is_collaborative
     })
     shareUrl.value = `${window.location.origin}/share/${result.data.share_token}`
     ElMessage.success('分享链接生成成功')
@@ -726,10 +808,46 @@ onMounted(async () => {
     loadTags()
     loadVersions()
   }
+  
+  // 初始化WebSocket并加入协作房间
+  if (props['is-collaborative'] && props['room-id']) {
+    await initSocket()
+    await joinRoom(props['room-id'])
+    
+    // 获取文档的最新状态
+    getDocumentState(note.value.id, 'note')
+    
+    // 监听文档更新事件
+    onDocumentUpdated((data) => {
+      if (data.doc_id === note.value.id && data.doc_type === 'note') {
+        // 只处理当前文档的更新
+        if (data.version > docVersion.value) {
+          docVersion.value = data.version
+          updateDocumentFromSync(data.content)
+        }
+      }
+    })
+    
+    // 监听文档状态事件
+    onDocumentState((data) => {
+      if (data.doc_id === note.value.id && data.doc_type === 'note') {
+        // 更新文档状态
+        if (data.version > docVersion.value) {
+          docVersion.value = data.version
+          updateDocumentFromSync(data.content)
+        }
+      }
+    })
+  }
 })
 
 onUnmounted(() => {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  
+  // 离开协作房间
+  if (props['is-collaborative'] && props['room-id']) {
+    leaveRoom(props['room-id'])
+  }
 })
 </script>
 

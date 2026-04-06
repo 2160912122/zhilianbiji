@@ -1,20 +1,46 @@
 <template>
   <div class="login-container">
-    <el-card class="login-card">
-      <h2 class="login-title">登录</h2>
-      <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-width="80px">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
+    <div class="login-box">
+      <div class="login-header">
+        <h1>登录</h1>
+        <p>智联笔记系统</p>
+      </div>
+      <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
+        <el-form-item prop="username">
+          <el-input
+            v-model="loginForm.username"
+            placeholder="请输入用户名"
+            size="large"
+            prefix-icon="User"
+          />
         </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"></el-input>
+        <el-form-item prop="password">
+          <el-input
+            v-model="loginForm.password"
+            type="password"
+            placeholder="请输入密码"
+            size="large"
+            prefix-icon="Lock"
+            show-password
+          />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleLogin" class="login-btn">登录</el-button>
-          <el-button @click="goToRegister" link>没有账号？去注册</el-button>
+          <el-button
+            type="primary"
+            size="large"
+            :loading="loading"
+            style="width: 100%"
+            @click="handleLogin"
+          >
+            登录
+          </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+      <div class="login-footer">
+        <span>没有账号？</span>
+        <router-link to="/register">立即注册</router-link>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -34,6 +60,7 @@ const loginForm = ref({
   username: '',
   password: ''
 })
+const loading = ref(false)
 
 // 表单校验规则
 const loginRules = ref({
@@ -54,6 +81,7 @@ const handleLogin = async () => {
 
   // 2. 异步登录，确保token存到localStorage
   try {
+    loading.value = true
     // 等待登录接口返回，确保token已存储
     const res = await userStore.login({
       username: loginForm.value.username,
@@ -76,12 +104,9 @@ const handleLogin = async () => {
     // 登录失败提示，不删token
     ElMessage.error(error.message || '登录失败，请检查账号密码')
     console.error('登录失败详情：', error)
+  } finally {
+    loading.value = false
   }
-}
-
-// 跳注册页（同样用Vue Router）
-const goToRegister = () => {
-  router.push('/register').catch(() => {})
 }
 
 // 挂载时检测：如果已有token，直接跳dashboard（防重复登录）
@@ -98,23 +123,55 @@ onMounted(() => {
 
 <style scoped>
 .login-container {
+  min-height: 100vh;
   display: flex;
-  justify-content: center;
   align-items: center;
-  height: 100vh;
-  background-color: #f5f5f5;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
-.login-card {
+
+.login-box {
   width: 400px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
-.login-title {
+
+.login-header {
   text-align: center;
-  margin-bottom: 20px;
-  color: #1989fa;
+  margin-bottom: 30px;
 }
-.login-btn {
-  width: 100%;
+
+.login-header h1 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  color: #333;
+}
+
+.login-header p {
+  margin: 0;
+  font-size: 14px;
+  color: #999;
+}
+
+.login-form {
+  margin-bottom: 20px;
+}
+
+.login-footer {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+}
+
+.login-footer a {
+  color: #409eff;
+  text-decoration: none;
+  margin-left: 5px;
+}
+
+.login-footer a:hover {
+  text-decoration: underline;
 }
 </style>

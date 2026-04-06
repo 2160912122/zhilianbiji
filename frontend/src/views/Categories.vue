@@ -60,9 +60,18 @@ const form = ref({
 
 async function loadCategories() {
   try {
-    categories.value = await categoryAPI.getList()
+    const res = await categoryAPI.getList()
+    // 处理后端返回的数据格式，确保categories始终是一个数组
+    if (res.code === 200 && Array.isArray(res.data)) {
+      categories.value = res.data
+    } else if (Array.isArray(res)) {
+      categories.value = res
+    } else {
+      categories.value = []
+    }
   } catch (error) {
     console.error('Load categories error:', error)
+    categories.value = []
   }
 }
 

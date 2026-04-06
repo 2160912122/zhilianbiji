@@ -104,18 +104,7 @@ const routes = [
         name: 'FlowchartEdit',
         component: () => import('@/views/FlowchartEditor.vue')
       },
-      {
-        path: 'categories',
-        name: 'Categories',
-        component: () => import('@/views/Categories.vue'),
-        meta: { requiresAdmin: true }
-      },
-      {
-        path: 'tags',
-        name: 'Tags',
-        component: () => import('@/views/Tags.vue'),
-        meta: { requiresAdmin: true }
-      },
+
       {
         path: 'admin',
         name: 'Admin',
@@ -126,6 +115,12 @@ const routes = [
         path: 'admin/user-manage',
         name: 'UserManage',
         component: () => import('@/views/UserManage.vue'),
+        meta: { requiresAdmin: true }
+      },
+      {
+        path: 'admin/note-manage',
+        name: 'NoteManage',
+        component: () => import('@/views/NoteManage.vue'),
         meta: { requiresAdmin: true }
       }
 

@@ -48,7 +48,14 @@ const tables = ref([])
 async function loadTables() {
   try {
     const result = await tableAPI.getList()
-    tables.value = result.data || []
+    // 处理后端返回的数据格式，确保tables始终是一个数组
+    if (result.code === 200 && Array.isArray(result.data)) {
+      tables.value = result.data
+    } else if (Array.isArray(result)) {
+      tables.value = result
+    } else {
+      tables.value = []
+    }
   } catch (error) {
     console.error('Load tables error:', error)
     tables.value = []

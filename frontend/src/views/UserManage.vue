@@ -167,7 +167,15 @@ async function loadUsers() {
       filteredUsers = res
     } else if (res.code === 200 && Array.isArray(res.data)) {
       filteredUsers = res.data
+    } else if (res.code === 200 && Array.isArray(res.data?.data)) {
+      filteredUsers = res.data.data
+    } else {
+      // 确保filteredUsers始终是一个数组
+      filteredUsers = []
     }
+    
+    // 确保users始终是一个数组
+    users.value = filteredUsers
     
     // 调试：查看用户数据
     console.log('用户数据:', filteredUsers)

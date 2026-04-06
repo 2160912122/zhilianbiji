@@ -214,8 +214,12 @@ class ShareLink(db.Model):
     note_id = db.Column(db.Integer, db.ForeignKey('note.id', ondelete='CASCADE'), nullable=True)
     flowchart_id = db.Column(db.Integer, db.ForeignKey('flowchart.id', ondelete='CASCADE'), nullable=True)
     mindmap_id = db.Column(db.Integer, db.ForeignKey('mindmap.id', ondelete='CASCADE'), nullable=True)
+    table_document_id = db.Column(db.Integer, db.ForeignKey('table_document.id', ondelete='CASCADE'), nullable=True)
+    whiteboard_id = db.Column(db.Integer, db.ForeignKey('whiteboard.id', ondelete='CASCADE'), nullable=True)
     token = db.Column(db.String(36), unique=True, nullable=False)
+    room_id = db.Column(db.String(50), unique=True, nullable=True)  # 协作房间ID
     permission = db.Column(db.String(10), nullable=False, default='view')
+    is_collaborative = db.Column(db.Boolean, default=False)  # 是否支持实时协作
     created_at = db.Column(db.DateTime, default=datetime.now)
     expire_at = db.Column(db.DateTime, nullable=True)
 

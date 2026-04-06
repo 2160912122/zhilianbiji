@@ -68,22 +68,12 @@
           v-model:flow-data="graphData"
           :read-only="readOnly"
           @change="handleFlowChange"
-          @element-selected="handleElementSelected"
           @save="handleSave"
           class="graph-editor"
         />
       </div>
 
-      <div class="right-sidebar">
-        <PropertyPanel
-          :selected-element="selectedElement"
-          @update-element="handleUpdateElement"
-          @update-element-position="handleUpdateElementPosition"
-          @update-node-type="handleUpdateNodeType"
-          @delete-element="handleDeleteElement"
-          @clear-selection="handleClearSelection"
-        />
-      </div>
+
     </div>
   </div>
 </template>
@@ -98,7 +88,6 @@ import {
 
 import LogicFlowEditor from '@/components/LogicFlowEditor.vue'
 import NodeLibrary from '@/components/NodeLibrary.vue'
-import PropertyPanel from '@/components/PropertyPanel.vue'
 
 const props = defineProps({
   flowTitle: {
@@ -134,7 +123,6 @@ watch(() => props.initialData, (newData) => {
 watch(() => props.flowTitle, (newTitle) => {
   flowTitle.value = newTitle
 }, { immediate: true })
-const selectedElement = ref(null)
 const readOnly = ref(false)
 const saving = ref(false)
 
@@ -171,15 +159,6 @@ const onKeyDown = (e) => {
     e.preventDefault()
     redo()
   }
-  else if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault()
-    if (selectedElement.value) {
-      handleDeleteElement(selectedElement.value.id)
-    }
-  }
-  else if (e.key === 'Escape') {
-    handleClearSelection()
-  }
 }
 
 const saveState = () => {
@@ -190,36 +169,6 @@ const saveState = () => {
 
 const handleFlowChange = (data) => {
   graphData.value = data
-
-  if (selectedElement.value) {
-    const elementId = selectedElement.value.id
-    if (selectedElement.value.type === 'node') {
-      const updatedNode = graphData.value.nodes[elementId]
-      if (updatedNode) {
-        selectedElement.value = {
-          ...selectedElement.value,
-          ...updatedNode,
-          nodeType: updatedNode.properties?.originalType || updatedNode.type
-        }
-      } else {
-        selectedElement.value = null
-      }
-    } else {
-      const updatedEdge = graphData.value.edges[elementId]
-      if (updatedEdge) {
-        selectedElement.value = {
-          ...selectedElement.value,
-          ...updatedEdge
-        }
-      } else {
-        selectedElement.value = null
-      }
-    }
-  }
-}
-
-const handleElementSelected = (element) => {
-  selectedElement.value = element
 }
 
 const handleTitleInput = () => {
@@ -244,13 +193,11 @@ const save = async () => {
 
     const result = await emit('save', data)
 
-    if (result !== false) {
-      ElMessage.success('保存成功')
+    if (result && result.success) {
       saveState()
     }
   } catch (error) {
     console.error('保存失败:', error)
-    ElMessage.error('保存失败')
   } finally {
     saving.value = false
   }
@@ -278,54 +225,7 @@ const onNodeDragStart = (node) => {
   console.log('开始拖拽节点:', node)
 }
 
-const handleUpdateElement = (element) => {
-  if (!lfEditor.value) return
 
-  if (element.type === 'node') {
-    lfEditor.value.updateNodeProperties(element.id, element.properties)
-  } else {
-    lfEditor.value.updateEdgeProperties(element.id, element.properties)
-  }
-}
-
-const handleUpdateElementPosition = (position) => {
-  if (!lfEditor.value || !selectedElement.value) return
-
-  lfEditor.value.updateNodePosition(position.id, position.x, position.y)
-}
-
-const handleUpdateNodeType = (nodeData) => {
-  if (!lfEditor.value) return
-
-  lfEditor.value.updateNodeType(nodeData.id, nodeData.nodeType)
-}
-
-const handleDeleteElement = (elementId) => {
-  if (!lfEditor.value) return
-
-  const lf = lfEditor.value.getLogicFlowInstance()
-  if (!lf) return
-
-  lf.deleteElement(elementId)
-
-  selectedElement.value = null
-
-  // 等待删除操作完成后再保存状态，确保获取最新数据
-  setTimeout(() => {
-    // 确保graphData已经更新
-    if (lfEditor.value) {
-      const latestData = lfEditor.value.getFlowData()
-      if (latestData) {
-        graphData.value = latestData
-      }
-    }
-    saveState()
-  }, 200)
-}
-
-const handleClearSelection = () => {
-  selectedElement.value = null
-}
 
 const handleSave = (data) => {
   save()
@@ -457,40 +357,15 @@ defineExpose({
   bottom: 0;
 }
 
-.right-sidebar {
-  width: 320px;
-  min-width: 280px;
-  max-width: 400px;
-  height: 100%;
-  border-left: 1px solid #e4e7ed;
-  flex-shrink: 0;
-  overflow-y: auto;
-}
-
 @media (max-width: 1200px) {
   .left-sidebar {
     width: 200px;
-  }
-
-  .right-sidebar {
-    width: 280px;
   }
 }
 
 @media (max-width: 992px) {
   .left-sidebar {
     display: none;
-  }
-
-  .right-sidebar {
-    position: absolute;
-    right: 0;
-    top: 60px;
-    bottom: 0;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-    z-index: 100;
   }
 }
 

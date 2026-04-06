@@ -61,9 +61,18 @@ const form = ref({
 
 async function loadTags() {
   try {
-    tags.value = await tagAPI.getList()
+    const res = await tagAPI.getList()
+    // 处理后端返回的数据格式，确保tags始终是一个数组
+    if (res.code === 200 && Array.isArray(res.data)) {
+      tags.value = res.data
+    } else if (Array.isArray(res)) {
+      tags.value = res
+    } else {
+      tags.value = []
+    }
   } catch (error) {
     console.error('Load tags error:', error)
+    tags.value = []
   }
 }
 

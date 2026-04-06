@@ -61,6 +61,9 @@ request.interceptors.response.use(
       ElMessage.error('后端接口路径不匹配，请检查/app.py的路由')
     } else if (status === 500) {
       ElMessage.error(data?.msg || '服务器错误')
+    } else if (status === 400) {
+      // 400错误，显示后端返回的具体错误信息
+      ElMessage.error(data?.message || data?.msg || '请求参数错误')
     } else if (status !== 200) { // 只在非200时提示，避免正常请求被干扰
       ElMessage.error(`请求失败：${status}`)
     }

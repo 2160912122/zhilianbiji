@@ -262,6 +262,14 @@ const initLogicFlow = async () => {
 
     lf.value.render()
 
+    // 将视图中心设置到画布正中间
+    setTimeout(() => {
+      if (lf.value) {
+        // 使用translateCenter()方法将画布内容居中显示
+        lf.value.translateCenter()
+      }
+    }, 100)
+
     isInitialized.value = true
 
     // 检查是否有pending的flowData
@@ -365,6 +373,14 @@ const loadFlowData = (flowData) => {
       nodes: lfNodes,
       edges: lfEdges
     })
+
+    // 将视图中心设置到画布正中间
+    setTimeout(() => {
+      if (lf.value) {
+        // 使用translateCenter()方法将画布内容居中显示
+        lf.value.translateCenter()
+      }
+    }, 100)
   } catch (error) {
     console.error('加载数据失败:', error)
   }

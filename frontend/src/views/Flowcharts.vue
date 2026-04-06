@@ -141,7 +141,14 @@ async function loadFlowcharts() {
     const response = await request.get('/api/flowcharts', {
       params
     })
-    flowcharts.value = response.data || []
+    // 处理后端返回的数据格式，确保flowcharts始终是一个数组
+    if (response.code === 200 && Array.isArray(response.data)) {
+      flowcharts.value = response.data
+    } else if (Array.isArray(response)) {
+      flowcharts.value = response
+    } else {
+      flowcharts.value = []
+    }
   } catch (error) {
     console.error('Load flowcharts error:', error)
     ElMessage.error('加载流程图列表失败')

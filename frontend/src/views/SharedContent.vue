@@ -13,15 +13,34 @@
     </el-card>
     
     <div v-else-if="contentType === 'note'" class="shared-note">
-      <NoteEditor :note-id="contentId" :is-shared="true" :share-permission="sharePermission" :shared-note="data.note" />
-    </div>
-    
+      <NoteEditor 
+        :note-id="contentId" 
+        :is-shared="true" 
+        :share-permission="sharePermission" 
+        :shared-note="data.note" 
+        :is-collaborative="data.is_collaborative" 
+        :room-id="data.room_id" 
+      />
+    </div>    
     <div v-else-if="contentType === 'flowchart'" class="shared-flowchart">
-      <FlowchartEditor :flowchart-id="contentId" :is-shared="true" :share-permission="sharePermission" :shared-flowchart="data.flowchart" />
-    </div>
-    
+      <FlowchartEditor 
+        :flowchart-id="contentId" 
+        :is-shared="true" 
+        :share-permission="sharePermission" 
+        :shared-flowchart="data.flowchart" 
+        :is-collaborative="data.is_collaborative" 
+        :room-id="data.room_id" 
+      />
+    </div>    
     <div v-else-if="contentType === 'mindmap'" class="shared-mindmap">
-      <MindmapEditor :mindmap-id="contentId" :is-shared="true" :share-permission="sharePermission" :shared-mindmap="data.mindmap" />
+      <MindmapEditor 
+        :mindmap-id="contentId" 
+        :is-shared="true" 
+        :share-permission="sharePermission" 
+        :shared-mindmap="data.mindmap" 
+        :is-collaborative="data.is_collaborative" 
+        :room-id="data.room_id" 
+      />
     </div>
     
     <el-card v-else style="max-width: 600px; margin: 50px auto;">

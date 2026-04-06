@@ -4,6 +4,7 @@ from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 from flask_migrate import Migrate
+from flask_socketio import SocketIO, join_room, leave_room, emit, send
 import os
 import logging
 import uuid
@@ -11,6 +12,9 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from openai import OpenAI
 from sqlalchemy import text
+import eventlet
+from eventlet import wsgi
+import threading
 
 # 加载.env文件中的环境变量
 from dotenv import load_dotenv
@@ -34,6 +38,17 @@ bcrypt.init_app(app)
 JWTManager(app)
 CORS(app, origins=app.config['CORS_ORIGINS'], supports_credentials=app.config['CORS_SUPPORTS_CREDENTIALS'])
 Migrate(app, db)
+
+# 初始化SocketIO
+# 配置CORS以允许所有来源
+CORS(app, resources={"*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# 在线用户字典，用于跟踪每个房间的在线用户
+online_users = {}
+
+# 协作文档状态，用于存储当前文档的最新状态
+collaborative_docs = {}
 
 # 初始化定时任务调度器
 scheduler = BackgroundScheduler()
@@ -72,6 +87,20 @@ def login():
         }), 200
     except Exception as e:
         logger.error(f"登录接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """用户登出接口"""
+    try:
+        # JWT是无状态的，登出只需要前端删除token即可
+        # 这里可以添加一些额外的登出逻辑，如记录登出日志等
+        return jsonify({
+            'code': 200,
+            'message': '登出成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"登出接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 @app.route('/api/register', methods=['POST'])
@@ -166,9 +195,15 @@ def create_note():
     try:
         user_id = get_jwt_identity()
         data = request.json
+        title = data.get('title', '新笔记')
+        
+        # 检查是否已存在同名笔记
+        existing_note = Note.query.filter_by(user_id=user_id, title=title).first()
+        if existing_note:
+            return jsonify({'code': 400, 'message': '已存在同名笔记，请使用其他名称'}), 400
         
         note = Note(
-            title=data.get('title', '新笔记'),
+            title=title,
             content=data.get('content', ''),
             type=data.get('type', 'richtext'),
             is_public=data.get('is_public', False),
@@ -225,12 +260,19 @@ def update_note(note_id):
             return jsonify({'code': 404, 'message': '笔记不存在或无权限访问'}), 404
         
         data = request.json
+        new_title = data.get('title', note.title)
+        
+        # 如果标题有变化，检查是否已存在同名笔记
+        if new_title != note.title:
+            existing_note = Note.query.filter_by(user_id=user_id, title=new_title).first()
+            if existing_note:
+                return jsonify({'code': 400, 'message': '已存在同名笔记，请使用其他名称'}), 400
         
         # 保存旧版本
         note.save_version(user_id)
         
         # 更新笔记字段
-        note.title = data.get('title', note.title)
+        note.title = new_title
         note.content = data.get('content', note.content)
         note.type = data.get('type', note.type)
         note.is_public = data.get('is_public', note.is_public)
@@ -767,7 +809,15 @@ def share_note(note_id):
         
         data = request.json
         permission = data.get('permission', 'view')
-        expire_at = data.get('expireAt')
+        expire_at = data.get('expire_at')
+        is_collaborative = data.get('is_collaborative', False)
+        
+        # 转换expire_at为datetime对象
+        if expire_at and isinstance(expire_at, str):
+            try:
+                expire_at = datetime.fromisoformat(expire_at)
+            except (ValueError, TypeError):
+                expire_at = None
         
         # 创建或更新共享链接
         share_link = ShareLink.query.filter_by(note_id=note_id, permission=permission).first()
@@ -776,12 +826,21 @@ def share_note(note_id):
             share_link = ShareLink(
                 note_id=note_id,
                 token=str(uuid.uuid4()),
+                room_id=str(uuid.uuid4()) if is_collaborative else None,
                 permission=permission,
+                is_collaborative=is_collaborative,
                 expire_at=expire_at
             )
             db.session.add(share_link)
         else:
             share_link.expire_at = expire_at
+            share_link.is_collaborative = is_collaborative
+            # 如果开启了协作但没有房间ID，生成一个
+            if is_collaborative and not share_link.room_id:
+                share_link.room_id = str(uuid.uuid4())
+            # 如果关闭了协作，清空房间ID
+            elif not is_collaborative:
+                share_link.room_id = None
         
         db.session.commit()
         
@@ -791,6 +850,8 @@ def share_note(note_id):
             'data': {
                 'share_token': share_link.token,
                 'permission': share_link.permission,
+                'is_collaborative': share_link.is_collaborative,
+                'room_id': share_link.room_id,
                 'expire_at': share_link.expire_at.isoformat() if share_link.expire_at else None
             }
         }), 200
@@ -1667,15 +1728,30 @@ def create_share_link():
         # 验证资源所有权
         resource_id = data.get('resource_id')
         resource_type = data.get('resource_type')
+        is_collaborative = data.get('is_collaborative', False)
+        
+        # 支持的资源类型列表
+        supported_types = ['note', 'flowchart', 'mindmap', 'table_document', 'whiteboard']
+        
+        if resource_type not in supported_types:
+            return jsonify({'code': 400, 'message': f'不支持的资源类型，支持的类型包括: {supported_types}'}), 400
+        
+        # 检查资源是否存在并属于当前用户
+        query = {
+            'id': resource_id,
+            'user_id': user_id
+        }
         
         if resource_type == 'note':
-            resource = Note.query.filter_by(id=resource_id, user_id=user_id).first()
+            resource = Note.query.filter_by(**query).first()
         elif resource_type == 'flowchart':
-            resource = Flowchart.query.filter_by(id=resource_id, user_id=user_id).first()
+            resource = Flowchart.query.filter_by(**query).first()
         elif resource_type == 'mindmap':
-            resource = Mindmap.query.filter_by(id=resource_id, user_id=user_id).first()
-        else:
-            return jsonify({'code': 400, 'message': '不支持的资源类型'}), 400
+            resource = Mindmap.query.filter_by(**query).first()
+        elif resource_type == 'table_document':
+            resource = TableDocument.query.filter_by(**query).first()
+        elif resource_type == 'whiteboard':
+            resource = Whiteboard.query.filter_by(**query).first()
         
         if not resource:
             return jsonify({'code': 404, 'message': '资源不存在或无权限'}), 404
@@ -1684,25 +1760,34 @@ def create_share_link():
         share_link = ShareLink(
             **{f'{resource_type}_id': resource_id},
             token=str(uuid.uuid4()),
+            room_id=str(uuid.uuid4()) if is_collaborative else None,
             permission=data.get('permission', 'view'),
+            is_collaborative=is_collaborative,
             expire_at=datetime.now() + timedelta(days=data.get('expire_days', 7))
         )
         
         db.session.add(share_link)
         db.session.commit()
         
+        response_data = {
+            'token': share_link.token,
+            'permission': share_link.permission,
+            'expire_at': share_link.expire_at.isoformat(),
+            'is_collaborative': share_link.is_collaborative
+        }
+        
+        # 如果是协作文档，返回房间ID
+        if is_collaborative:
+            response_data['room_id'] = share_link.room_id
+        
         return jsonify({
             'code': 201,
             'message': '创建成功',
-            'data': {
-                'token': share_link.token,
-                'permission': share_link.permission,
-                'expire_at': share_link.expire_at.isoformat()
-            }
+            'data': response_data
         }), 201
     except Exception as e:
         logger.error(f"创建共享链接接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+        return jsonify({'code': 500, 'message': f'服务器内部错误: {str(e)}'}), 500
 
 # -------------------------- 定时任务 --------------------------
 def clean_expired_share_links():
@@ -1747,17 +1832,17 @@ def ai_chat():
             logger.warning(f"AI聊天请求失败: 消息为空, 用户ID={user_id}")
             return jsonify({'code': 400, 'message': '请求参数不能为空'}), 400
         
-        # 使用OpenAI SDK调用千帆v2 API
-        qianfan_api_key = os.getenv('QIANFAN_API_KEY', '')
-        qianfan_base_url = os.getenv('QIANFAN_BASE_URL', '')
-        qianfan_model = os.getenv('QIANFAN_MODEL', 'deepseek-r1-distill-qwen-32b')
+        # 使用OpenAI SDK调用阿里云百炼API
+        dashscope_api_key = os.getenv('DASHSCOPE_API_KEY', '')
+        dashscope_base_url = os.getenv('DASHSCOPE_BASE_URL', '')
+        dashscope_model = os.getenv('DASHSCOPE_MODEL', 'qwen-plus')
         
-        logger.info(f"千帆API密钥配置: {qianfan_api_key[:10]}..." if qianfan_api_key else "未配置")
-        logger.info(f"千帆API基础URL: {qianfan_base_url}")
-        logger.info(f"千帆API模型: {qianfan_model}")
+        logger.info(f"阿里云百炼API密钥配置: {dashscope_api_key[:10]}..." if dashscope_api_key else "未配置")
+        logger.info(f"阿里云百炼API基础URL: {dashscope_base_url}")
+        logger.info(f"阿里云百炼API模型: {dashscope_model}")
         
-        if not qianfan_api_key or not qianfan_base_url:
-            logger.error("千帆API配置不完整")
+        if not dashscope_api_key or not dashscope_base_url:
+            logger.error("阿里云百炼API配置不完整")
             return jsonify({
                 'code': 500,
                 'message': 'AI服务配置不完整',
@@ -1766,41 +1851,41 @@ def ai_chat():
                 }
             }), 500
         
-        logger.info("开始使用千帆v2 API")
+        logger.info("开始使用阿里云百炼API")
         
-        # 初始化OpenAI客户端（用于调用千帆API）
+        # 初始化OpenAI客户端（用于调用阿里云百炼API）
         logger.info("正在初始化OpenAI客户端...")
         client = OpenAI(
-            api_key=qianfan_api_key,
-            base_url=qianfan_base_url,
+            api_key=dashscope_api_key,
+            base_url=dashscope_base_url,
             timeout=120  # 增加超时时间到120秒，与前端保持一致，适应AI生成内容的长时间处理
         )
         logger.info("OpenAI客户端初始化成功")
         
-        # 调用千帆API获取回复
-        logger.info(f"准备发送千帆API请求: 模型={qianfan_model}, 消息数量={len(messages)}")
+        # 调用阿里云百炼API获取回复
+        logger.info(f"准备发送阿里云百炼API请求: 模型={dashscope_model}, 消息数量={len(messages)}")
         
         # 记录完整的消息格式
         for i, msg in enumerate(messages):
             logger.info(f"消息{i+1}: role={msg.get('role')}, content={msg.get('content')[:50]}...")
         
-        logger.info("正在发送千帆API请求...")
-        logger.info(f"请求参数: model={qianfan_model}, messages={messages}, temperature=0.9, top_p=0.7, max_tokens=3000")
+        logger.info("正在发送阿里云百炼API请求...")
+        logger.info(f"请求参数: model={dashscope_model}, messages={messages}, temperature=0.9, top_p=0.7, max_tokens=3000")
         
         # 调用API并处理异常
         try:
             response = client.chat.completions.create(
-                model=qianfan_model,
+                model=dashscope_model,
                 messages=messages,
                 temperature=0.9,
                 top_p=0.7,
                 max_tokens=3000  # 增加max_tokens值，允许生成更长的内容
             )
             
-            logger.info(f"千帆API请求发送成功")
+            logger.info(f"阿里云百炼API请求发送成功")
             
-            logger.info(f"千帆API响应类型: {type(response)}")
-            logger.info(f"千帆API响应内容: {response}")
+            logger.info(f"阿里云百炼API响应类型: {type(response)}")
+            logger.info(f"阿里云百炼API响应内容: {response}")
             
             # 安全提取响应内容
             if hasattr(response, 'choices'):
@@ -1866,7 +1951,7 @@ def ai_chat():
                     }
                 }), 500
         except Exception as e:
-            logger.error(f"千帆API异常: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.error(f"阿里云百炼API异常: {type(e).__name__}: {str(e)}", exc_info=True)
             return jsonify({
                 'code': 500,
                 'message': f'AI服务调用失败: {type(e).__name__}',
@@ -1894,6 +1979,443 @@ def clean_expired_share_links():
             logger.info(f"清理了 {len(expired_links)} 个过期共享链接")
     except Exception as e:
         logger.error(f"清理过期共享链接任务异常: {str(e)}", exc_info=True)
+
+# -------------------------- 管理员接口 --------------------------
+@app.route('/api/admin/dashboard/stats', methods=['GET'])
+@jwt_required()
+def get_admin_stats():
+    """获取管理员统计数据"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 统计数据
+        user_count = User.query.count()
+        today_users = User.query.filter(User.created_at >= datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)).count()
+        
+        # 计算最近7天用户增长
+        recent_user_growth = []
+        today = datetime.now()
+        for i in range(6, -1, -1):
+            date = today - timedelta(days=i)
+            start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            count = User.query.filter(
+                User.created_at >= start_of_day,
+                User.created_at <= end_of_day
+            ).count()
+            recent_user_growth.append(count)
+        
+        stats = {
+            'userCount': user_count,
+            'todayUsers': today_users,
+            'totalNotes': Note.query.count(),
+            'normalNotes': Note.query.count(),
+            'totalTables': TableDocument.query.count(),
+            'totalWhiteboards': Whiteboard.query.count(),
+            'totalMindmaps': Mindmap.query.count(),
+            'totalFlowcharts': Flowchart.query.count(),
+            'recentUserGrowth': recent_user_growth  # 最近7天用户增长
+        }
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"获取管理员统计数据接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/admin/users', methods=['GET'])
+@jwt_required()
+def get_admin_users():
+    """获取用户列表（管理员）"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 获取所有用户
+        users = User.query.all()
+        user_list = []
+        
+        for u in users:
+            user_list.append({
+                'id': u.id,
+                'username': u.username,
+                'email': u.email,
+                'is_admin': u.is_admin,
+                'created_at': u.created_at.isoformat() if u.created_at else None
+            })
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': user_list
+        }), 200
+    except Exception as e:
+        logger.error(f"获取用户列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@jwt_required()
+def update_user_status(user_id):
+    """更新用户状态（管理员）"""
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user or not current_user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 获取要更新的用户
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        # 不允许修改自己的管理员状态
+        if user_id == current_user_id:
+            return jsonify({'code': 400, 'message': '不能修改自己的管理员状态'}), 400
+        
+        # 更新用户状态
+        data = request.json
+        if 'is_admin' in data:
+            user.is_admin = bool(data['is_admin'])
+            db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"更新用户状态接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/admin/content', methods=['GET'])
+@jwt_required()
+def get_admin_content():
+    """获取内容列表（管理员）"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 获取查询参数
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
+        search = request.args.get('search', '')
+        content_type = request.args.get('type', 'all')
+        sort_by = request.args.get('sort_by', 'created_at')
+        
+        # 构建查询
+        all_content = []
+        
+        # 查询笔记
+        if content_type == 'all' or content_type == 'notes':
+            notes = Note.query.all()
+            for note in notes:
+                all_content.append({
+                    'id': note.id,
+                    'title': note.title,
+                    'type': '笔记',
+                    'creator': note.author.username if note.author else '未知',
+                    'created_at': note.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': note.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        # 查询表格
+        if content_type == 'all' or content_type == 'tables':
+            tables = TableDocument.query.all()
+            for table in tables:
+                all_content.append({
+                    'id': table.id,
+                    'title': table.title,
+                    'type': '表格',
+                    'creator': table.author.username if table.author else '未知',
+                    'created_at': table.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': table.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        # 查询白板
+        if content_type == 'all' or content_type == 'whiteboards':
+            whiteboards = Whiteboard.query.all()
+            for whiteboard in whiteboards:
+                all_content.append({
+                    'id': whiteboard.id,
+                    'title': whiteboard.title,
+                    'type': '白板',
+                    'creator': whiteboard.author.username if whiteboard.author else '未知',
+                    'created_at': whiteboard.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': whiteboard.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        # 查询脑图
+        if content_type == 'all' or content_type == 'mindmaps':
+            mindmaps = Mindmap.query.all()
+            for mindmap in mindmaps:
+                all_content.append({
+                    'id': mindmap.id,
+                    'title': mindmap.title,
+                    'type': '脑图',
+                    'creator': mindmap.author.username if mindmap.author else '未知',
+                    'created_at': mindmap.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': mindmap.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        # 查询流程图
+        if content_type == 'all' or content_type == 'flowcharts':
+            flowcharts = Flowchart.query.all()
+            for flowchart in flowcharts:
+                all_content.append({
+                    'id': flowchart.id,
+                    'title': flowchart.title,
+                    'type': '流程图',
+                    'creator': flowchart.author.username if flowchart.author else '未知',
+                    'created_at': flowchart.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'updated_at': flowchart.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        # 搜索过滤
+        if search:
+            all_content = [item for item in all_content if search.lower() in item['title'].lower() or search.lower() in item['creator'].lower()]
+        
+        # 排序
+        if sort_by == 'created_at':
+            all_content.sort(key=lambda x: x['created_at'], reverse=True)
+        elif sort_by == 'updated_at':
+            all_content.sort(key=lambda x: x['updated_at'], reverse=True)
+        elif sort_by == 'title':
+            all_content.sort(key=lambda x: x['title'])
+        
+        # 分页
+        total = len(all_content)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_content = all_content[start:end]
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': {
+                'items': paginated_content,
+                'total': total,
+                'page': page,
+                'page_size': page_size
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"获取内容列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/admin/content/<int:content_id>', methods=['DELETE'])
+@jwt_required()
+def delete_admin_content(content_id):
+    """删除内容（管理员）"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 尝试删除笔记
+        note = Note.query.get(content_id)
+        if note:
+            db.session.delete(note)
+            db.session.commit()
+            return jsonify({'code': 200, 'message': '删除成功'}), 200
+        
+        # 尝试删除表格
+        table = TableDocument.query.get(content_id)
+        if table:
+            db.session.delete(table)
+            db.session.commit()
+            return jsonify({'code': 200, 'message': '删除成功'}), 200
+        
+        # 尝试删除白板
+        whiteboard = Whiteboard.query.get(content_id)
+        if whiteboard:
+            db.session.delete(whiteboard)
+            db.session.commit()
+            return jsonify({'code': 200, 'message': '删除成功'}), 200
+        
+        # 尝试删除脑图
+        mindmap = Mindmap.query.get(content_id)
+        if mindmap:
+            db.session.delete(mindmap)
+            db.session.commit()
+            return jsonify({'code': 200, 'message': '删除成功'}), 200
+        
+        # 尝试删除流程图
+        flowchart = Flowchart.query.get(content_id)
+        if flowchart:
+            db.session.delete(flowchart)
+            db.session.commit()
+            return jsonify({'code': 200, 'message': '删除成功'}), 200
+        
+        return jsonify({'code': 404, 'message': '内容不存在'}), 404
+    except Exception as e:
+        logger.error(f"删除内容接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/admin/export', methods=['GET'])
+@jwt_required()
+def export_admin_data():
+    """导出数据（管理员）"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_admin:
+            return jsonify({'code': 403, 'message': '无管理员权限'}), 403
+        
+        # 准备导出数据
+        export_data = {
+            'users': {
+                'data': [],
+                'summary': {
+                    'total_users': 0,
+                    'today_users': 0,
+                    'recent_users': 0
+                }
+            },
+            'content': {
+                'data': [],
+                'summary': {
+                    'total_content': 0,
+                    'notes': 0,
+                    'tables': 0,
+                    'whiteboards': 0,
+                    'mindmaps': 0,
+                    'flowcharts': 0
+                }
+            }
+        }
+        
+        # 导出用户数据
+        users = User.query.all()
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        recent_7_days = today - timedelta(days=7)
+        today_users_count = 0
+        recent_users_count = 0
+        
+        for u in users:
+            user_data = {
+                'id': u.id,
+                'username': u.username,
+                'email': u.email,
+                'is_admin': u.is_admin,
+                'created_at': u.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'last_login': u.last_login.strftime('%Y-%m-%d %H:%M:%S') if u.last_login else 'N/A'
+            }
+            export_data['users']['data'].append(user_data)
+            
+            # 统计今日新增用户
+            if u.created_at >= today:
+                today_users_count += 1
+            
+            # 统计近日新增用户（最近7天）
+            if u.created_at >= recent_7_days:
+                recent_users_count += 1
+        
+        # 填充用户统计数据
+        export_data['users']['summary']['total_users'] = len(users)
+        export_data['users']['summary']['today_users'] = today_users_count
+        export_data['users']['summary']['recent_users'] = recent_users_count
+        
+        # 导出内容数据
+        all_content = []
+        
+        # 导出笔记
+        notes = Note.query.all()
+        for note in notes:
+            content_data = {
+                'id': note.id,
+                'title': note.title,
+                'type': '笔记',
+                'creator': note.author.username if note.author else '未知',
+                'created_at': note.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': note.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            all_content.append(content_data)
+        
+        # 导出表格
+        tables = TableDocument.query.all()
+        for table in tables:
+            content_data = {
+                'id': table.id,
+                'title': table.title,
+                'type': '表格',
+                'creator': table.author.username if table.author else '未知',
+                'created_at': table.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': table.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            all_content.append(content_data)
+        
+        # 导出白板
+        whiteboards = Whiteboard.query.all()
+        for whiteboard in whiteboards:
+            content_data = {
+                'id': whiteboard.id,
+                'title': whiteboard.title,
+                'type': '白板',
+                'creator': whiteboard.author.username if whiteboard.author else '未知',
+                'created_at': whiteboard.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': whiteboard.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            all_content.append(content_data)
+        
+        # 导出脑图
+        mindmaps = Mindmap.query.all()
+        for mindmap in mindmaps:
+            content_data = {
+                'id': mindmap.id,
+                'title': mindmap.title,
+                'type': '脑图',
+                'creator': mindmap.author.username if mindmap.author else '未知',
+                'created_at': mindmap.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': mindmap.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            all_content.append(content_data)
+        
+        # 导出流程图
+        flowcharts = Flowchart.query.all()
+        for flowchart in flowcharts:
+            content_data = {
+                'id': flowchart.id,
+                'title': flowchart.title,
+                'type': '流程图',
+                'creator': flowchart.author.username if flowchart.author else '未知',
+                'created_at': flowchart.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': flowchart.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            all_content.append(content_data)
+        
+        # 填充内容数据
+        export_data['content']['data'] = all_content
+        export_data['content']['summary']['total_content'] = len(all_content)
+        export_data['content']['summary']['notes'] = len(notes)
+        export_data['content']['summary']['tables'] = len(tables)
+        export_data['content']['summary']['whiteboards'] = len(whiteboards)
+        export_data['content']['summary']['mindmaps'] = len(mindmaps)
+        export_data['content']['summary']['flowcharts'] = len(flowcharts)
+        
+        return jsonify({
+            'code': 200,
+            'message': '导出成功',
+            'data': export_data
+        }), 200
+    except Exception as e:
+        logger.error(f"导出数据接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 # -------------------------- 错误处理 --------------------------
 @app.errorhandler(404)
@@ -1923,42 +2445,63 @@ def get_shared_content(token):
         if share_link.expire_at and share_link.expire_at < datetime.now():
             return jsonify({'code': 410, 'message': '分享链接已过期'}), 410
         
+        # 构建基本响应数据
+        response = {
+            'code': 200,
+            'message': '获取成功',
+            'permission': share_link.permission,
+            'is_collaborative': share_link.is_collaborative
+        }
+        
+        # 如果是协作文档，添加房间ID
+        if share_link.is_collaborative and share_link.room_id:
+            response['room_id'] = share_link.room_id
+        
         # 根据类型获取内容
         if share_link.note_id:
             note = Note.query.get(share_link.note_id)
             if not note:
                 return jsonify({'code': 404, 'message': '分享的笔记不存在'}), 404
-            return jsonify({
-                'code': 200,
-                'message': '获取成功',
+            response.update({
                 'type': 'note',
-                'permission': share_link.permission,
                 'note': note.to_full_dict()
-            }), 200
+            })
         elif share_link.flowchart_id:
             flowchart = Flowchart.query.get(share_link.flowchart_id)
             if not flowchart:
                 return jsonify({'code': 404, 'message': '分享的流程图不存在'}), 404
-            return jsonify({
-                'code': 200,
-                'message': '获取成功',
+            response.update({
                 'type': 'flowchart',
-                'permission': share_link.permission,
                 'flowchart': flowchart.to_dict()
-            }), 200
+            })
         elif share_link.mindmap_id:
             mindmap = Mindmap.query.get(share_link.mindmap_id)
             if not mindmap:
                 return jsonify({'code': 404, 'message': '分享的脑图不存在'}), 404
-            return jsonify({
-                'code': 200,
-                'message': '获取成功',
+            response.update({
                 'type': 'mindmap',
-                'permission': share_link.permission,
                 'mindmap': mindmap.to_dict()
-            }), 200
+            })
+        elif share_link.table_document_id:
+            table_doc = TableDocument.query.get(share_link.table_document_id)
+            if not table_doc:
+                return jsonify({'code': 404, 'message': '分享的表格不存在'}), 404
+            response.update({
+                'type': 'table_document',
+                'table': table_doc.to_dict()
+            })
+        elif share_link.whiteboard_id:
+            whiteboard = Whiteboard.query.get(share_link.whiteboard_id)
+            if not whiteboard:
+                return jsonify({'code': 404, 'message': '分享的白板不存在'}), 404
+            response.update({
+                'type': 'whiteboard',
+                'whiteboard': whiteboard.to_dict()
+            })
         else:
             return jsonify({'code': 404, 'message': '分享链接无效'}), 404
+        
+        return jsonify(response), 200
     except Exception as e:
         logger.error(f"获取分享内容接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
@@ -2182,6 +2725,163 @@ def get_shared_content_html(token):
         </html>
         ''', 500
 
+# -------------------------- WebSocket事件处理 --------------------------
+@socketio.on('connect')
+def handle_connect():
+    """处理客户端连接"""
+    print(f'客户端 {request.sid} 已连接')
+    emit('connected', {'message': '连接成功', 'sid': request.sid})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """处理客户端断开连接"""
+    print(f'客户端 {request.sid} 已断开连接')
+    # 从所有房间中移除用户
+    for room_id in online_users.keys():
+        if request.sid in online_users[room_id]:
+            online_users[room_id].remove(request.sid)
+            # 通知房间内其他用户有用户离开
+            emit('user_left', {'user_id': request.sid}, room=room_id)
+            # 如果房间为空，删除房间
+            if not online_users[room_id]:
+                del online_users[room_id]
+            break
+
+@socketio.on('join_room')
+def handle_join_room(data):
+    """处理用户加入房间"""
+    room_id = data.get('room_id')
+    user_info = data.get('user_info', {})
+    if not room_id:
+        emit('error', {'message': '房间ID不能为空'})
+        return
+    
+    # 加入房间
+    join_room(room_id)
+    
+    # 更新在线用户列表
+    if room_id not in online_users:
+        online_users[room_id] = []
+    online_users[room_id].append({
+        'sid': request.sid,
+        'user_id': user_info.get('id', request.sid),
+        'username': user_info.get('username', f'用户{request.sid[:5]}')
+    })
+    
+    # 通知房间内其他用户有新用户加入
+    emit('user_joined', {
+        'user': {
+            'sid': request.sid,
+            'user_id': user_info.get('id', request.sid),
+            'username': user_info.get('username', f'用户{request.sid[:5]}')
+        }
+    }, room=room_id)
+    
+    # 发送当前房间的在线用户列表给新加入的用户
+    emit('online_users', {'users': online_users[room_id]})
+    
+    print(f'客户端 {request.sid} 加入了房间 {room_id}')
+
+@socketio.on('leave_room')
+def handle_leave_room(data):
+    """处理用户离开房间"""
+    room_id = data.get('room_id')
+    if not room_id:
+        emit('error', {'message': '房间ID不能为空'})
+        return
+    
+    # 离开房间
+    leave_room(room_id)
+    
+    # 更新在线用户列表
+    if room_id in online_users:
+        online_users[room_id] = [user for user in online_users[room_id] if user['sid'] != request.sid]
+        # 通知房间内其他用户有用户离开
+        emit('user_left', {'user_id': request.sid}, room=room_id)
+        # 如果房间为空，删除房间
+        if not online_users[room_id]:
+            del online_users[room_id]
+    
+    print(f'客户端 {request.sid} 离开了房间 {room_id}')
+
+@socketio.on('send_message')
+def handle_send_message(data):
+    """处理发送消息"""
+    room_id = data.get('room_id')
+    message = data.get('message')
+    sender_id = data.get('sender_id', request.sid)
+    timestamp = data.get('timestamp', datetime.now().isoformat())
+    
+    if not room_id or not message:
+        emit('error', {'message': '房间ID和消息不能为空'})
+        return
+    
+    # 广播消息给房间内所有用户（除了发送者）
+    emit('new_message', {
+        'sender_id': sender_id,
+        'message': message,
+        'timestamp': timestamp
+    }, room=room_id)
+    
+    print(f'客户端 {sender_id} 在房间 {room_id} 发送了消息: {message}')
+
+@socketio.on('sync_document')
+def handle_sync_document(data):
+    """处理文档同步"""
+    room_id = data.get('room_id')
+    doc_id = data.get('doc_id')
+    doc_type = data.get('doc_type')
+    doc_content = data.get('content')
+    version = data.get('version', 0)
+    
+    if not room_id or not doc_id or not doc_type or doc_content is None:
+        emit('error', {'message': '房间ID、文档ID、文档类型和内容不能为空'})
+        return
+    
+    # 更新文档状态
+    doc_key = f'{doc_type}:{doc_id}'
+    collaborative_docs[doc_key] = {
+        'content': doc_content,
+        'version': version,
+        'last_updated': datetime.now().isoformat()
+    }
+    
+    # 广播文档更新给房间内所有用户（除了发送者）
+    emit('document_updated', {
+        'doc_id': doc_id,
+        'doc_type': doc_type,
+        'content': doc_content,
+        'version': version,
+        'timestamp': datetime.now().isoformat()
+    }, room=room_id)
+    
+    print(f'文档 {doc_key} 已更新，版本: {version}')
+
+@socketio.on('get_document_state')
+def handle_get_document_state(data):
+    """获取文档当前状态"""
+    doc_id = data.get('doc_id')
+    doc_type = data.get('doc_type')
+    
+    if not doc_id or not doc_type:
+        emit('error', {'message': '文档ID和类型不能为空'})
+        return
+    
+    # 获取文档状态
+    doc_key = f'{doc_type}:{doc_id}'
+    doc_state = collaborative_docs.get(doc_key, {
+        'content': None,
+        'version': 0,
+        'last_updated': datetime.now().isoformat()
+    })
+    
+    # 发送文档状态给请求者
+    emit('document_state', {
+        'doc_id': doc_id,
+        'doc_type': doc_type,
+        **doc_state
+    })
+
 # -------------------------- 主函数 --------------------------
 if __name__ == '__main__':
     # 确保上传目录存在
@@ -2193,4 +2893,5 @@ if __name__ == '__main__':
     scheduler.start()
     
     # 启动应用
-    app.run(debug=app.config['DEBUG'], host='0.0.0.0', port=5000)
+    # 使用socketio.run而不是app.run来支持WebSocket
+    socketio.run(app, debug=app.config['DEBUG'], host='0.0.0.0', port=5000)

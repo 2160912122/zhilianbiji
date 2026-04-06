@@ -50,7 +50,14 @@ const mindmaps = ref([])
 async function loadMindmaps() {
   try {
     const result = await mindmapAPI.getList()
-    mindmaps.value = result.data || []
+    // 处理后端返回的数据格式，确保mindmaps始终是一个数组
+    if (result.code === 200 && Array.isArray(result.data)) {
+      mindmaps.value = result.data
+    } else if (Array.isArray(result)) {
+      mindmaps.value = result
+    } else {
+      mindmaps.value = []
+    }
   } catch (error) {
     console.error('Load mindmaps error:', error)
     mindmaps.value = []

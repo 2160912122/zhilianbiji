@@ -103,7 +103,14 @@ async function loadNotes() {
     if (selectedType.value) params.type = selectedType.value
     
     const result = await noteAPI.getList(params)
-    notes.value = result.data || []
+    // 处理后端返回的数据格式，确保notes始终是一个数组
+    if (result.code === 200 && Array.isArray(result.data)) {
+      notes.value = result.data
+    } else if (Array.isArray(result)) {
+      notes.value = result
+    } else {
+      notes.value = []
+    }
   } catch (error) {
     console.error('Load notes error:', error)
     notes.value = []
@@ -113,7 +120,14 @@ async function loadNotes() {
 async function loadCategories() {
   try {
     const result = await categoryAPI.getList()
-    categories.value = result.data || []
+    // 处理后端返回的数据格式，确保categories始终是一个数组
+    if (result.code === 200 && Array.isArray(result.data)) {
+      categories.value = result.data
+    } else if (Array.isArray(result)) {
+      categories.value = result
+    } else {
+      categories.value = []
+    }
   } catch (error) {
     console.error('Load categories error:', error)
     categories.value = []

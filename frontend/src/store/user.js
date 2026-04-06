@@ -47,8 +47,8 @@ export const useUserStore = defineStore('user', () => {
       }
       // 存储token和用户信息
       setToken(loginToken)
-      // 修复：直接使用res.data作为userData，确保包含is_admin字段
-      const userData = res.data || res.userInfo || res.user || {}
+      // 修复：从res.data.user中获取用户信息，确保包含is_admin字段
+      const userData = res.data?.user || res.userInfo || res.user || {}
       setUser(userData)
       console.log('登录成功，存储的token：', loginToken)
       console.log('登录成功，存储的userData：', userData)

@@ -543,8 +543,7 @@ function handleTitleChange(newTitle) {
   // 更新本地标题
   flowTitle.value = newTitle
   
-  // 自动保存，与其他编辑器保持一致的用户体验
-  handleSave()
+  // 移除自动保存，只有用户点击保存按钮时才保存
 }
 
 async function handleSaveFlowchart(flowData) {
@@ -555,8 +554,9 @@ async function handleSaveFlowchart(flowData) {
       edges: flowData.edges || {}
     }
     
-    const saveData = {
-      title: flowTitle.value,
+    let title = flowTitle.value
+    let saveData = {
+      title: title,
       flow_data: normalizedFlowData
     }
 
@@ -570,17 +570,17 @@ async function handleSaveFlowchart(flowData) {
     } else {
       // 创建新流程图
       console.log('创建新流程图:', saveData)
-      response = await request.post('/api/flowcharts', saveData)
-      console.log('创建成功，响应:', response)
-      // 保存成功后，跳转到编辑页面
-      if (response.data && response.data.id) {
-        console.log('跳转到编辑页面:', `/flowcharts/${response.data.id}`)
-        router.push(`/flowcharts/${response.data.id}`)
-      } else {
-        console.error('创建流程图失败，响应中没有id:', response)
-        ElMessage.error('创建流程图失败，响应格式不正确')
-        return { success: false, message: '创建流程图失败' }
+      response = await createNewFlowchart(saveData, title)
+      // 如果createNewFlowchart返回错误，直接返回
+      if (!response) {
+        return { success: false, message: '创建失败' }
       }
+    }
+
+    // 检查response是否存在，确保保存真正成功
+    if (!response) {
+      console.error('保存失败，响应为空')
+      return { success: false, message: '保存失败' }
     }
 
     console.log('保存成功:', response)
@@ -592,8 +592,67 @@ async function handleSaveFlowchart(flowData) {
     return { success: true, message: '保存成功' }
   } catch (error) {
     console.error('保存失败:', error)
-    ElMessage.error('保存失败')
+    // 不显示错误信息，由request拦截器处理
     return { success: false, message: '保存失败' }
+  }
+}
+
+// 创建新流程图的辅助函数
+async function createNewFlowchart(saveData, title) {
+  try {
+    const response = await request.post('/api/flowcharts', saveData)
+    console.log('创建成功，响应:', response)
+    // 保存成功后，跳转到编辑页面
+    if (response.data && response.data.id) {
+      console.log('跳转到编辑页面:', `/flowcharts/${response.data.id}`)
+      router.push(`/flowcharts/${response.data.id}`)
+    } else {
+      console.error('创建流程图失败，响应中没有id:', response)
+      ElMessage.error('创建流程图失败，响应格式不正确')
+      return null
+    }
+    return response
+  } catch (error) {
+    // 检查是否是因为同名流程图导致的错误
+    if (error.response && error.response.data && error.response.data.message && error.response.data.message.includes('已存在同名流程图')) {
+      // 如果是默认标题"未命名流程图"，尝试自动重命名
+      if (title === '未命名流程图') {
+        let suffix = 1
+        let newTitle = `未命名流程图（${suffix}）`
+        let isDuplicate = true
+        
+        // 循环检查直到找到可用的标题
+        while (isDuplicate) {
+          try {
+            saveData.title = newTitle
+            const response = await request.post('/api/flowcharts', saveData)
+            console.log('创建成功，响应:', response)
+            if (response.data && response.data.id) {
+              console.log('跳转到编辑页面:', `/flowcharts/${response.data.id}`)
+              router.push(`/flowcharts/${response.data.id}`)
+            }
+            isDuplicate = false
+            return response
+          } catch (innerError) {
+            if (innerError.response && innerError.response.data && innerError.response.data.message && innerError.response.data.message.includes('已存在同名流程图')) {
+              // 继续尝试下一个序号
+              suffix++
+              newTitle = `未命名流程图（${suffix}）`
+            } else {
+              // 其他错误，直接抛出
+              throw innerError
+            }
+          }
+        }
+      } else {
+        // 非默认标题，直接返回错误，不显示错误信息（由request拦截器处理）
+        console.log('返回错误:', error.response.data.message)
+        return null
+      }
+    } else {
+      // 其他错误，直接抛出
+      throw error
+    }
   }
 }
 
