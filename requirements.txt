@@ -1,0 +1,11 @@
+Flask
+Flask-SQLAlchemy
+Flask-Bcrypt
+Flask-CORS
+Flask-JWT-Extended
+Flask-Migrate
+Flask-SocketIO
+APScheduler
+openai
+eventlet
+python-dotenv
