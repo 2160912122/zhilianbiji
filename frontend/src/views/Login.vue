@@ -94,10 +94,19 @@ const handleLogin = async () => {
     // 4. 延迟300ms跳转（关键！等localStorage完全同步）
     // 只走Vue Router跳转，绝对不用window.location.href
     setTimeout(() => {
-      router.push('/dashboard').catch(err => {
-        console.log('跳转dashboard失败，兜底跳首页', err)
-        router.push('/').catch(() => {})
-      })
+      const shareToken = localStorage.getItem('shareToken')
+      if (shareToken) {
+        localStorage.removeItem('shareToken')
+        router.push(`/share/${shareToken}`).catch(err => {
+          console.log('跳转分享链接失败，兜底跳dashboard', err)
+          router.push('/dashboard').catch(() => {})
+        })
+      } else {
+        router.push('/dashboard').catch(err => {
+          console.log('跳转dashboard失败，兜底跳首页', err)
+          router.push('/').catch(() => {})
+        })
+      }
     }, 300)
 
   } catch (error) {

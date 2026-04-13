@@ -15,13 +15,18 @@ export default defineConfig({
     cors: true, // 兜底跨域配置
     proxy: {
       '/api': {
-        target: 'http://localhost:5000', // Flask后端地址
-        changeOrigin: true, // 必须开启
+        target: 'http://localhost:5000',
+        changeOrigin: true,
         ws: true,
       },
-      '/share': {
-        target: 'http://localhost:5000', // Flask后端地址
-        changeOrigin: true, // 必须开启
+      '/socket.io': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/wbo': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
         ws: true,
       }
     },

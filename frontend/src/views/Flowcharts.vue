@@ -85,26 +85,11 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="shareDialogVisible" title="分享流程图" width="500px">
-      <div v-if="shareUrl" class="share-url-container">
-        <p>分享链接已生成：</p>
-        <el-input v-model="shareUrl" readonly>
-          <template #append>
-            <el-button @click="copyShareUrl">复制</el-button>
-          </template>
-        </el-input>
-        <p style="margin-top: 10px; color: #666;">该链接有效期为7天</p>
-      </div>
-      <div v-else>
-        <p>确定要分享这个流程图吗？</p>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="shareDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmShare" :loading="sharing">确认分享</el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <ShareDialog
+      v-model:visible="shareDialogVisible"
+      :resource-id="currentFlowchartId"
+      resource-type="flowchart"
+    />
   </div>
 </template>
 
@@ -114,14 +99,13 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import ShareDialog from '@/components/ShareDialog.vue'
 
 const router = useRouter()
 const flowcharts = ref([])
 const searchQuery = ref('')
 const selectedTags = ref([])
 const shareDialogVisible = ref(false)
-const sharing = ref(false)
-const shareUrl = ref('')
 const currentFlowchartId = ref(null)
 
 let searchTimer = null
@@ -183,34 +167,9 @@ async function duplicateFlowchart(id) {
   }
 }
 
-async function shareFlowchart(id) {
+function shareFlowchart(id) {
   currentFlowchartId.value = id
   shareDialogVisible.value = true
-  shareUrl.value = ''
-}
-
-async function confirmShare() {
-  if (!currentFlowchartId.value) return
-
-  sharing.value = true
-  try {
-    const response = await request.post(`/api/flowcharts/${currentFlowchartId.value}/share`, {
-      days: 7
-    })
-
-    shareUrl.value = `${window.location.origin}${response.share_url}`
-    ElMessage.success('分享链接已生成')
-  } catch (error) {
-    console.error('分享失败:', error)
-    ElMessage.error('分享失败')
-  } finally {
-    sharing.value = false
-  }
-}
-
-function copyShareUrl() {
-  navigator.clipboard.writeText(shareUrl.value)
-  ElMessage.success('链接已复制到剪贴板')
 }
 
 async function deleteFlowchart(id) {

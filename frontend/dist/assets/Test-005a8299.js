@@ -1,0 +1,1 @@
+import{_ as t,b as _,c,d as s}from"./index-78bee381.js";const d={},n={class:"test"};function o(a,e){return _(),c("div",n,[...e[0]||(e[0]=[s("h1",null,"测试页面",-1),s("p",null,"这是一个测试页面，用于测试前端路由是否正常工作。",-1)])])}const l=t(d,[["render",o],["__scopeId","data-v-deacdd39"]]);export{l as default};

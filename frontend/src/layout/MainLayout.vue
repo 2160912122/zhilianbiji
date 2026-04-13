@@ -1,6 +1,7 @@
 <template>
   <el-container class="main-layout">
-    <el-aside width="240px" class="sidebar">
+    <!-- 侧边栏 -->
+    <el-aside :width="isMobile ? '240px' : '240px'" :class="['sidebar', { 'open': isSidebarOpen }]">
       <div class="logo">
         <div class="logo-icon">
           <el-icon><Document /></el-icon>
@@ -12,6 +13,7 @@
         router
         class="menu"
         :collapse-transition="false"
+        @select="handleMenuSelect"
       >
         <!-- 所有用户都能看到的基础菜单 -->
         <el-menu-item index="/dashboard" class="menu-item">
@@ -38,6 +40,14 @@
           <el-icon class="menu-icon"><Share /></el-icon>
           <span class="menu-text">流程图</span>
         </el-menu-item>
+        <el-menu-item index="/knowledge-graphs" class="menu-item">
+          <el-icon class="menu-icon"><Link /></el-icon>
+          <span class="menu-text">知识图谱</span>
+        </el-menu-item>
+        <el-menu-item index="/trash" class="menu-item">
+          <el-icon class="menu-icon"><Delete /></el-icon>
+          <span class="menu-text">回收站</span>
+        </el-menu-item>
 
         <!-- 管理菜单：只对管理员可见 -->
         <el-sub-menu v-if="isAdmin" index="manage" class="sub-menu">
@@ -55,9 +65,22 @@
         </el-sub-menu>
       </el-menu>
     </el-aside>
+    
+    <!-- 移动端侧边栏遮罩 -->
+    <div v-if="isMobile && isSidebarOpen" class="sidebar-mask" @click="toggleSidebar"></div>
+    
     <el-container>
       <el-header class="header">
         <div class="header-left">
+          <!-- 移动端菜单按钮 -->
+          <el-button
+            v-if="isMobile"
+            class="menu-toggle"
+            @click="toggleSidebar"
+            size="small"
+            icon="Menu"
+            circle
+          />
           <div class="breadcrumb">
             <el-breadcrumb separator="/">
               <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
@@ -74,6 +97,7 @@
               size="small"
               prefix-icon="Search"
               class="search-input"
+              @keyup.enter="handleSearch"
             />
           </div>
           <!-- 未登录时隐藏用户信息，显示登录按钮 -->
@@ -111,29 +135,55 @@
         </div>
       </el-header>
       <el-main class="main-content">
-        <transition name="fade" mode="out-in">
-          <router-view />
-        </transition>
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </el-main>
     </el-container>
   </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 // 导入需要的图标（确保图标已注册，若未注册需在main.js全局注册）
 import {
   HomeFilled, Document, Grid, EditPen, Connection, Share,
-  Setting, User, ArrowDown, UserFilled, Search, SwitchButton
+  Setting, User, ArrowDown, UserFilled, Search, SwitchButton, Menu, Delete, Link
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const searchQuery = ref('')
+
+// 响应式状态
+const isMobile = ref(false)
+const isSidebarOpen = ref(false)
+
+// 检测是否为移动设备
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768
+  if (!isMobile.value) {
+    isSidebarOpen.value = true
+  }
+}
+
+// 切换侧边栏显示/隐藏
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value
+}
+
+// 处理菜单选择
+const handleMenuSelect = () => {
+  if (isMobile.value) {
+    isSidebarOpen.value = false
+  }
+}
 
 // 核心：判断是否为管理员（兼容store和localStorage，双重保障）
 const isAdmin = computed(() => {
@@ -155,6 +205,8 @@ const pageTitle = computed(() => {
       '/whiteboards': '白板管理',
       '/mindmaps': '脑图管理',
       '/flowcharts': '流程图管理',
+      '/knowledge-graphs': '知识图谱',
+      '/trash': '回收站',
       '/admin': '工作台'
     }
     return titles[route.path] || '智联笔记'
@@ -165,30 +217,63 @@ const toLogin = () => {
   router.push('/login')
 }
 
-// 处理下拉菜单命令（退出登录）
+// 处理搜索
+function handleSearch() {
+  if (searchQuery.value.trim()) {
+    // 这里可以实现搜索逻辑，例如跳转到搜索结果页面
+    console.log('搜索:', searchQuery.value)
+    // 示例：跳转到搜索结果页面
+    router.push(`/search?query=${encodeURIComponent(searchQuery.value)}`)
+  }
+}
+
+// 处理下拉菜单命令（退出登录、个人资料、设置）
 async function handleCommand(command) {
-  if (command === 'logout') {
-    try {
-      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      })
-      // 调用store的退出方法，清空store和localStorage
-      await userStore.logout()
-      // 额外清空localStorage的is_admin（防止残留）
-      localStorage.removeItem('is_admin')
-      ElMessage.success('已退出登录')
-      router.push('/login')
-    } catch (err) {
-      ElMessage.info('已取消退出')
-    }
+  switch (command) {
+    case 'profile':
+      // 跳转到个人资料页面
+      console.log('个人资料')
+      // 示例：跳转到个人资料页面
+      router.push('/profile')
+      break
+    case 'settings':
+      // 跳转到设置页面
+      console.log('设置')
+      // 示例：跳转到设置页面
+      router.push('/settings')
+      break
+    case 'logout':
+      try {
+        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        // 调用store的退出方法，清空store和localStorage
+        await userStore.logout()
+        // 额外清空localStorage的is_admin（防止残留）
+        localStorage.removeItem('is_admin')
+        ElMessage.success('已退出登录')
+        router.push('/login')
+      } catch (err) {
+        ElMessage.info('已取消退出')
+      }
+      break
   }
 }
 
 // 挂载时初始化用户状态
 onMounted(() => {
   userStore.initFromStorage()
+  // 初始检测是否为移动设备
+  checkMobile()
+  // 添加窗口大小变化监听
+  window.addEventListener('resize', checkMobile)
+})
+
+// 卸载时移除监听
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
 })
 </script>
 
@@ -423,6 +508,24 @@ onMounted(() => {
   transition: var(--transition);
 }
 
+/* 移动端菜单按钮 */
+.menu-toggle {
+  margin-right: 12px;
+  display: none;
+}
+
+/* 移动端侧边栏遮罩 */
+.sidebar-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  transition: var(--transition);
+}
+
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .sidebar {
@@ -443,6 +546,10 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .menu-toggle {
+    display: block;
+  }
+  
   .sidebar {
     position: fixed;
     left: 0;
@@ -460,12 +567,25 @@ onMounted(() => {
     padding: 0 20px;
   }
   
+  .header-left {
+    display: flex;
+    align-items: center;
+  }
+  
   .search-box {
     width: 180px;
   }
   
   .main-content {
     padding: 16px;
+  }
+  
+  .user-name {
+    display: none;
+  }
+  
+  .header-right {
+    gap: 12px;
   }
 }
 </style>

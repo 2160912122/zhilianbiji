@@ -5,7 +5,7 @@ import { io } from 'socket.io-client'
 class SocketService {
   constructor() {
     this.socket = null
-    this.url = 'http://localhost:5000'
+    this.url = import.meta.env.VITE_APP_API_URL
     this.isConnected = false
     this.roomId = null
     this.userInfo = null

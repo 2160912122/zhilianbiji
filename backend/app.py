@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from openai import OpenAI
-from sqlalchemy import text
+from sqlalchemy import text, or_
 import eventlet
 from eventlet import wsgi
 import threading
@@ -22,7 +22,8 @@ load_dotenv()
 
 # 导入自定义模块
 from config import get_config
-from models import db, bcrypt, User, Note, NoteVersion, Category, Tag, Flowchart, FlowchartVersion, TableDocument, TableDocumentVersion, Whiteboard, WhiteboardVersion, Mindmap, MindmapVersion, ShareLink
+from models import db, bcrypt, User, Note, NoteVersion, Category, Tag, Flowchart, FlowchartVersion, TableDocument, TableDocumentVersion, Whiteboard, WhiteboardVersion, Mindmap, MindmapVersion, ShareLink, KnowledgeGraph, KnowledgeNode, KnowledgeRelation
+from whiteboard.socket_handler import init_socketio
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,7 +43,8 @@ Migrate(app, db)
 # 初始化SocketIO
 # 配置CORS以允许所有来源
 CORS(app, resources={"*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*")
+# 使用自定义的 SocketIO 初始化函数，集成 Whitebophir 白板功能
+socketio = init_socketio(app)
 
 # 在线用户字典，用于跟踪每个房间的在线用户
 online_users = {}
@@ -150,6 +152,478 @@ def get_user_profile():
         logger.error(f"获取用户信息接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
+@app.route('/api/user/profile', methods=['PUT'])
+@jwt_required()
+def update_user_profile():
+    """更新用户个人信息"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'code': 400, 'message': '请求数据不能为空'}), 400
+        
+        # 更新用户信息
+        if 'username' in data:
+            user.username = data['username']
+        if 'email' in data:
+            user.email = data['email']
+        if 'phone' in data:
+            user.phone = data['phone']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功',
+            'data': user.to_dict()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"更新用户信息接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+@app.route('/api/user/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    """修改密码"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'code': 400, 'message': '请求数据不能为空'}), 400
+        
+        current_password = data.get('current_password')
+        new_password = data.get('new_password')
+        confirm_password = data.get('confirm_password')
+        
+        if not current_password or not new_password or not confirm_password:
+            return jsonify({'code': 400, 'message': '密码不能为空'}), 400
+        
+        if new_password != confirm_password:
+            return jsonify({'code': 400, 'message': '两次输入的密码不一致'}), 400
+        
+        # 验证当前密码（使用User模型的check_password方法）
+        if not user.check_password(current_password):
+            return jsonify({'code': 400, 'message': '当前密码错误'}), 400
+        
+        # 更新密码（使用User模型的set_password方法）
+        user.set_password(new_password)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '密码修改成功'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"修改密码接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+# -------------------------- 数据导出接口 --------------------------
+@app.route('/api/user/export-data', methods=['GET'])
+@jwt_required()
+def export_data():
+    """导出用户所有数据"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        # 导出用户数据
+        export_data = {
+            'user': user.to_dict(),
+            'notes': [],
+            'categories': [],
+            'tags': [],
+            'flowcharts': [],
+            'tables': [],
+            'whiteboards': [],
+            'mindmaps': [],
+            'export_time': datetime.now().isoformat()
+        }
+        
+        # 导出笔记
+        notes = Note.query.filter_by(user_id=user_id, is_deleted=False).all()
+        for note in notes:
+            export_data['notes'].append(note.to_full_dict())
+        
+        # 导出分类
+        categories = Category.query.filter_by(user_id=user_id).all()
+        for category in categories:
+            export_data['categories'].append(category.to_dict())
+        
+        # 导出标签
+        tags = Tag.query.filter_by(user_id=user_id).all()
+        for tag in tags:
+            export_data['tags'].append(tag.to_dict())
+        
+        # 导出流程图
+        flowcharts = Flowchart.query.filter_by(user_id=user_id, is_deleted=False).all()
+        for flowchart in flowcharts:
+            export_data['flowcharts'].append(flowchart.to_dict())
+        
+        # 导出表格
+        tables = TableDocument.query.filter_by(user_id=user_id, is_deleted=False).all()
+        for table in tables:
+            export_data['tables'].append(table.to_dict())
+        
+        # 导出白板
+        whiteboards = Whiteboard.query.filter_by(user_id=user_id, is_deleted=False).all()
+        for whiteboard in whiteboards:
+            export_data['whiteboards'].append(whiteboard.to_dict())
+        
+        # 导出脑图
+        mindmaps = Mindmap.query.filter_by(user_id=user_id, is_deleted=False).all()
+        for mindmap in mindmaps:
+            export_data['mindmaps'].append(mindmap.to_dict())
+        
+        logger.info(f"用户 {user_id} 导出数据成功")
+        
+        return jsonify({
+            'code': 200,
+            'message': '数据导出成功',
+            'data': export_data
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"数据导出接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+# -------------------------- 数据导入接口 --------------------------
+@app.route('/api/user/import-data', methods=['POST'])
+@jwt_required()
+def import_data():
+    """导入用户数据"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'code': 400, 'message': '请求数据不能为空'}), 400
+        
+        imported_count = {
+            'notes': 0,
+            'categories': 0,
+            'tags': 0,
+            'flowcharts': 0,
+            'tables': 0,
+            'whiteboards': 0,
+            'mindmaps': 0
+        }
+        
+        # 导入分类
+        if 'categories' in data:
+            for category_data in data['categories']:
+                existing_category = Category.query.filter_by(
+                    user_id=user_id, 
+                    name=category_data.get('name')
+                ).first()
+                if not existing_category:
+                    new_category = Category(
+                        name=category_data.get('name'),
+                        user_id=user_id
+                    )
+                    db.session.add(new_category)
+                    imported_count['categories'] += 1
+        
+        # 导入标签
+        if 'tags' in data:
+            for tag_data in data['tags']:
+                existing_tag = Tag.query.filter_by(
+                    user_id=user_id, 
+                    name=tag_data.get('name')
+                ).first()
+                if not existing_tag:
+                    new_tag = Tag(
+                        name=tag_data.get('name'),
+                        user_id=user_id
+                    )
+                    db.session.add(new_tag)
+                    imported_count['tags'] += 1
+        
+        db.session.commit()
+        
+        # 导入笔记（需要先导入分类和标签）
+        if 'notes' in data:
+            for note_data in data['notes']:
+                new_note = Note(
+                    title=note_data.get('title', '无标题'),
+                    content=note_data.get('content', ''),
+                    type=note_data.get('type', 'richtext'),
+                    user_id=user_id,
+                    is_public=note_data.get('is_public', False)
+                )
+                
+                # 设置分类
+                if note_data.get('category_id'):
+                    category = Category.query.filter_by(
+                        user_id=user_id,
+                        id=note_data.get('category_id')
+                    ).first()
+                    if category:
+                        new_note.category_id = category.id
+                
+                db.session.add(new_note)
+                imported_count['notes'] += 1
+        
+        # 导入流程图
+        if 'flowcharts' in data:
+            for flowchart_data in data['flowcharts']:
+                new_flowchart = Flowchart(
+                    title=flowchart_data.get('title', '无标题'),
+                    description=flowchart_data.get('description', ''),
+                    flow_data=flowchart_data.get('flow_data'),
+                    thumbnail=flowchart_data.get('thumbnail'),
+                    is_public=flowchart_data.get('is_public', False),
+                    user_id=user_id
+                )
+                db.session.add(new_flowchart)
+                imported_count['flowcharts'] += 1
+        
+        # 导入表格
+        if 'tables' in data:
+            for table_data in data['tables']:
+                new_table = TableDocument(
+                    title=table_data.get('title', '无标题'),
+                    columns_data=table_data.get('columns'),
+                    rows_data=table_data.get('rows'),
+                    cell_styles=table_data.get('cellStyles'),
+                    user_id=user_id
+                )
+                db.session.add(new_table)
+                imported_count['tables'] += 1
+        
+        # 导入白板
+        if 'whiteboards' in data:
+            for whiteboard_data in data['whiteboards']:
+                new_whiteboard = Whiteboard(
+                    title=whiteboard_data.get('title', '无标题'),
+                    room_key=whiteboard_data.get('room_key'),
+                    data=whiteboard_data.get('data'),
+                    user_id=user_id
+                )
+                db.session.add(new_whiteboard)
+                imported_count['whiteboards'] += 1
+        
+        # 导入脑图
+        if 'mindmaps' in data:
+            for mindmap_data in data['mindmaps']:
+                new_mindmap = Mindmap(
+                    title=mindmap_data.get('title', '无标题'),
+                    data=mindmap_data.get('data'),
+                    is_public=mindmap_data.get('is_public', False),
+                    user_id=user_id
+                )
+                db.session.add(new_mindmap)
+                imported_count['mindmaps'] += 1
+        
+        db.session.commit()
+        logger.info(f"用户 {user_id} 导入数据成功: {imported_count}")
+        
+        return jsonify({
+            'code': 200,
+            'message': '数据导入成功',
+            'data': imported_count
+        }), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"数据导入接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+# -------------------------- 清空数据接口 --------------------------
+@app.route('/api/user/clear-data', methods=['DELETE'])
+@jwt_required()
+def clear_data():
+    """清空用户所有数据（谨慎使用）"""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'}), 404
+        
+        # 删除用户所有相关数据（通过级联删除）
+        # 由于模型设置了cascade='all, delete-orphan'，删除用户会自动删除所有关联数据
+        
+        # 先统计要删除的数据量
+        notes_count = Note.query.filter_by(user_id=user_id).count()
+        flowcharts_count = Flowchart.query.filter_by(user_id=user_id).count()
+        tables_count = TableDocument.query.filter_by(user_id=user_id).count()
+        whiteboards_count = Whiteboard.query.filter_by(user_id=user_id).count()
+        mindmaps_count = Mindmap.query.filter_by(user_id=user_id).count()
+        categories_count = Category.query.filter_by(user_id=user_id).count()
+        tags_count = Tag.query.filter_by(user_id=user_id).count()
+        
+        deleted_count = {
+            'notes': notes_count,
+            'flowcharts': flowcharts_count,
+            'tables': tables_count,
+            'whiteboards': whiteboards_count,
+            'mindmaps': mindmaps_count,
+            'categories': categories_count,
+            'tags': tags_count
+        }
+        
+        # 删除所有关联数据（保留用户本身）
+        Note.query.filter_by(user_id=user_id).delete()
+        Flowchart.query.filter_by(user_id=user_id).delete()
+        TableDocument.query.filter_by(user_id=user_id).delete()
+        Whiteboard.query.filter_by(user_id=user_id).delete()
+        Mindmap.query.filter_by(user_id=user_id).delete()
+        Category.query.filter_by(user_id=user_id).delete()
+        Tag.query.filter_by(user_id=user_id).delete()
+        
+        db.session.commit()
+        
+        logger.warning(f"用户 {user_id} 清空所有数据: {deleted_count}")
+        
+        return jsonify({
+            'code': 200,
+            'message': '数据清空成功',
+            'data': deleted_count
+        }), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"清空数据接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/search', methods=['GET'])
+@jwt_required()
+def search():
+    """搜索内容"""
+    try:
+        user_id = get_jwt_identity()
+        query = request.args.get('query', '')
+        
+        logger.info(f"========== 搜索请求到达 ==========")
+        logger.info(f"用户ID: {user_id}")
+        logger.info(f"搜索关键词: {query}")
+        
+        if not query:
+            return jsonify({'code': 400, 'message': '搜索关键词不能为空'}), 400
+        
+        # 搜索笔记
+        notes = Note.query.filter(
+            Note.user_id == user_id,
+            or_(
+                Note.title.ilike(f'%{query}%'),
+                Note.content.ilike(f'%{query}%')
+            )
+        ).all()
+        
+        # 搜索表格（使用正确的模型名称 TableDocument）
+        tables = TableDocument.query.filter(
+            TableDocument.user_id == user_id,
+            TableDocument.title.ilike(f'%{query}%')
+        ).all()
+        
+        # 搜索白板
+        whiteboards = Whiteboard.query.filter(
+            Whiteboard.user_id == user_id,
+            Whiteboard.title.ilike(f'%{query}%')
+        ).all()
+        
+        # 搜索脑图
+        mindmaps = Mindmap.query.filter(
+            Mindmap.user_id == user_id,
+            Mindmap.title.ilike(f'%{query}%')
+        ).all()
+        
+        # 搜索流程图
+        flowcharts = Flowchart.query.filter(
+            Flowchart.user_id == user_id,
+            or_(
+                Flowchart.title.ilike(f'%{query}%'),
+                Flowchart.description.ilike(f'%{query}%')
+            )
+        ).all()
+        
+        # 整理搜索结果
+        results = []
+        
+        for note in notes:
+            results.append({
+                'id': note.id,
+                'title': note.title,
+                'content': note.content,
+                'type': 'note',
+                'updated_at': note.updated_at.isoformat()
+            })
+        
+        for table in tables:
+            content_preview = f"表格包含 {len(table.columns_data) if table.columns_data else 0} 列数据"
+            results.append({
+                'id': table.id,
+                'title': table.title,
+                'content': content_preview,
+                'type': 'table',
+                'updated_at': table.updated_at.isoformat()
+            })
+        
+        for whiteboard in whiteboards:
+            content_preview = "白板内容（可视化数据）"
+            results.append({
+                'id': whiteboard.id,
+                'title': whiteboard.title,
+                'content': content_preview,
+                'type': 'whiteboard',
+                'updated_at': whiteboard.updated_at.isoformat()
+            })
+        
+        for mindmap in mindmaps:
+            content_preview = "脑图数据"
+            results.append({
+                'id': mindmap.id,
+                'title': mindmap.title,
+                'content': content_preview,
+                'type': 'mindmap',
+                'updated_at': mindmap.updated_at.isoformat()
+            })
+        
+        for flowchart in flowcharts:
+            content_preview = flowchart.description or "流程图描述"
+            results.append({
+                'id': flowchart.id,
+                'title': flowchart.title,
+                'content': content_preview,
+                'type': 'flowchart',
+                'updated_at': flowchart.updated_at.isoformat()
+            })
+        
+        # 按更新时间排序
+        results.sort(key=lambda x: x['updated_at'], reverse=True)
+        
+        return jsonify({
+            'code': 200,
+            'message': '搜索成功',
+            'data': results
+        }), 200
+    except Exception as e:
+        logger.error(f"搜索接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
 # -------------------------- 笔记管理接口 --------------------------
 @app.route('/api/notes', methods=['GET'])
 @jwt_required()
@@ -157,7 +631,28 @@ def get_notes():
     """获取用户的笔记列表"""
     try:
         user_id = get_jwt_identity()
-        notes = Note.query.filter_by(user_id=user_id).order_by(Note.updated_at.desc()).all()
+        
+        search_query = request.args.get('search', '')
+        category_id = request.args.get('category_id', '')
+        note_type = request.args.get('type', '')
+        
+        query = Note.query.filter_by(user_id=user_id, is_deleted=False)
+        
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    Note.title.ilike(f'%{search_query}%'),
+                    Note.content.ilike(f'%{search_query}%')
+                )
+            )
+        
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        
+        if note_type:
+            query = query.filter_by(type=note_type)
+        
+        notes = query.order_by(Note.updated_at.desc()).all()
         
         return jsonify({
             'code': 200,
@@ -397,24 +892,22 @@ def rollback_note_version(note_id, version_id):
 @app.route('/api/notes/<int:note_id>', methods=['DELETE'])
 @jwt_required()
 def delete_note(note_id):
-    """删除笔记"""
+    """删除笔记（移动到回收站）"""
     try:
         user_id = get_jwt_identity()
-        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
+        note = Note.query.filter_by(id=note_id, user_id=user_id, is_deleted=False).first()
         
         if not note:
             return jsonify({'code': 404, 'message': '笔记不存在'}), 404
         
-        # 删除笔记版本记录
-        NoteVersion.query.filter_by(note_id=note_id).delete()
-        
-        # 删除笔记
-        db.session.delete(note)
+        # 标记为删除
+        note.is_deleted = True
+        note.deleted_at = datetime.now()
         db.session.commit()
         
         return jsonify({
             'code': 200,
-            'message': '删除成功'
+            'message': '已移至回收站'
         }), 200
     except Exception as e:
         logger.error(f"删除笔记接口异常: {str(e)}", exc_info=True)
@@ -540,7 +1033,26 @@ def get_flowcharts():
     """获取用户的流程图列表"""
     try:
         user_id = get_jwt_identity()
-        flowcharts = Flowchart.query.filter_by(user_id=user_id).order_by(Flowchart.updated_at.desc()).all()
+        
+        search_query = request.args.get('search', '')
+        tag_ids = request.args.get('tag_ids', '')
+        
+        query = Flowchart.query.filter_by(user_id=user_id, is_deleted=False)
+        
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    Flowchart.title.ilike(f'%{search_query}%'),
+                    Flowchart.description.ilike(f'%{search_query}%')
+                )
+            )
+        
+        if tag_ids:
+            tag_id_list = [int(tid) for tid in tag_ids.split(',') if tid.strip()]
+            if tag_id_list:
+                query = query.filter(Flowchart.tags.any(id__in=tag_id_list))
+        
+        flowcharts = query.order_by(Flowchart.updated_at.desc()).all()
         
         return jsonify({
             'code': 200,
@@ -657,24 +1169,22 @@ def update_flowchart(flowchart_id):
 @app.route('/api/flowcharts/<int:flowchart_id>', methods=['DELETE'])
 @jwt_required()
 def delete_flowchart(flowchart_id):
-    """删除流程图"""
+    """删除流程图（移动到回收站）"""
     try:
         user_id = get_jwt_identity()
-        flowchart = Flowchart.query.filter_by(id=flowchart_id, user_id=user_id).first()
+        flowchart = Flowchart.query.filter_by(id=flowchart_id, user_id=user_id, is_deleted=False).first()
         
         if not flowchart:
             return jsonify({'code': 404, 'message': '流程图不存在'}), 404
         
-        # 删除流程图版本记录
-        FlowchartVersion.query.filter_by(flowchart_id=flowchart_id).delete()
-        
-        # 删除流程图
-        db.session.delete(flowchart)
+        # 标记为删除
+        flowchart.is_deleted = True
+        flowchart.deleted_at = datetime.now()
         db.session.commit()
         
         return jsonify({
             'code': 200,
-            'message': '删除成功'
+            'message': '已移至回收站'
         }), 200
     except Exception as e:
         logger.error(f"删除流程图接口异常: {str(e)}", exc_info=True)
@@ -717,176 +1227,7 @@ def duplicate_flowchart(flowchart_id):
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 
-@app.route('/api/flowcharts/<int:flowchart_id>/share', methods=['POST'])
-@jwt_required()
-def share_flowchart(flowchart_id):
-    """共享流程图"""
-    try:
-        user_id = get_jwt_identity()
-        flowchart = Flowchart.query.filter_by(id=flowchart_id, user_id=user_id).first()
-        
-        if not flowchart:
-            return jsonify({'code': 404, 'message': '流程图不存在'}), 404
-        
-        data = request.json
-        permission = data.get('permission', 'view')
-        expire_at = data.get('expireAt')
-        
-        # 创建或更新共享链接
-        share_link = ShareLink.query.filter_by(flowchart_id=flowchart_id, permission=permission).first()
-        
-        if not share_link:
-            share_link = ShareLink(
-                flowchart_id=flowchart_id,
-                permission=permission,
-                expire_at=expire_at,
-                user_id=user_id
-            )
-            db.session.add(share_link)
-        else:
-            share_link.expire_at = expire_at
-        
-        db.session.commit()
-        
-        return jsonify({
-            'code': 200,
-            'message': '共享成功',
-            'data': {
-                'share_token': share_link.token,
-                'permission': share_link.permission,
-                'expire_at': share_link.expire_at.isoformat() if share_link.expire_at else None
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"共享流程图接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
-
-@app.route('/api/notes/<int:note_id>/shares', methods=['GET'])
-@jwt_required()
-def get_note_shares(note_id):
-    """获取笔记的分享链接列表"""
-    try:
-        user_id = get_jwt_identity()
-        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
-        
-        if not note:
-            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
-        
-        # 获取笔记的所有分享链接
-        share_links = ShareLink.query.filter_by(note_id=note_id).all()
-        
-        # 转换为前端需要的格式
-        shares = []
-        for link in share_links:
-            shares.append({
-                'token': link.token,
-                'permission': link.permission,
-                'expire_at': link.expire_at.isoformat() if link.expire_at else None,
-                'created_at': link.created_at.isoformat()
-            })
-        
-        return jsonify({
-            'code': 200,
-            'message': '获取成功',
-            'data': shares
-        }), 200
-    except Exception as e:
-        logger.error(f"获取笔记分享链接列表接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
-
-
-@app.route('/api/notes/<int:note_id>/share', methods=['POST'])
-@jwt_required()
-def share_note(note_id):
-    """共享笔记"""
-    try:
-        user_id = get_jwt_identity()
-        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
-        
-        if not note:
-            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
-        
-        data = request.json
-        permission = data.get('permission', 'view')
-        expire_at = data.get('expire_at')
-        is_collaborative = data.get('is_collaborative', False)
-        
-        # 转换expire_at为datetime对象
-        if expire_at and isinstance(expire_at, str):
-            try:
-                expire_at = datetime.fromisoformat(expire_at)
-            except (ValueError, TypeError):
-                expire_at = None
-        
-        # 创建或更新共享链接
-        share_link = ShareLink.query.filter_by(note_id=note_id, permission=permission).first()
-        
-        if not share_link:
-            share_link = ShareLink(
-                note_id=note_id,
-                token=str(uuid.uuid4()),
-                room_id=str(uuid.uuid4()) if is_collaborative else None,
-                permission=permission,
-                is_collaborative=is_collaborative,
-                expire_at=expire_at
-            )
-            db.session.add(share_link)
-        else:
-            share_link.expire_at = expire_at
-            share_link.is_collaborative = is_collaborative
-            # 如果开启了协作但没有房间ID，生成一个
-            if is_collaborative and not share_link.room_id:
-                share_link.room_id = str(uuid.uuid4())
-            # 如果关闭了协作，清空房间ID
-            elif not is_collaborative:
-                share_link.room_id = None
-        
-        db.session.commit()
-        
-        return jsonify({
-            'code': 200,
-            'message': '共享成功',
-            'data': {
-                'share_token': share_link.token,
-                'permission': share_link.permission,
-                'is_collaborative': share_link.is_collaborative,
-                'room_id': share_link.room_id,
-                'expire_at': share_link.expire_at.isoformat() if share_link.expire_at else None
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"共享笔记接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
-
-
-@app.route('/api/notes/<int:note_id>/shares/<string:token>', methods=['DELETE'])
-@jwt_required()
-def delete_note_share(note_id, token):
-    """删除笔记的分享链接"""
-    try:
-        user_id = get_jwt_identity()
-        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
-        
-        if not note:
-            return jsonify({'code': 404, 'message': '笔记不存在'}), 404
-        
-        # 查找并删除分享链接
-        share_link = ShareLink.query.filter_by(note_id=note_id, token=token).first()
-        
-        if not share_link:
-            return jsonify({'code': 404, 'message': '分享链接不存在'}), 404
-        
-        db.session.delete(share_link)
-        db.session.commit()
-        
-        return jsonify({
-            'code': 200,
-            'message': '删除成功'
-        }), 200
-    except Exception as e:
-        logger.error(f"删除笔记分享链接接口异常: {str(e)}", exc_info=True)
-        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 
 @app.route('/api/flowcharts/<int:flowchart_id>/versions', methods=['GET'])
@@ -978,7 +1319,7 @@ def get_tables():
     """获取用户的表格列表"""
     try:
         user_id = get_jwt_identity()
-        tables = TableDocument.query.filter_by(user_id=user_id).order_by(TableDocument.updated_at.desc()).all()
+        tables = TableDocument.query.filter_by(user_id=user_id, is_deleted=False).order_by(TableDocument.updated_at.desc()).all()
         
         return jsonify({
             'code': 200,
@@ -1089,24 +1430,22 @@ def update_table(table_id):
 @app.route('/api/tables/<int:table_id>', methods=['DELETE'])
 @jwt_required()
 def delete_table(table_id):
-    """删除表格"""
+    """删除表格（移动到回收站）"""
     try:
         user_id = get_jwt_identity()
-        table = TableDocument.query.filter_by(id=table_id, user_id=user_id).first()
+        table = TableDocument.query.filter_by(id=table_id, user_id=user_id, is_deleted=False).first()
         
         if not table:
             return jsonify({'code': 404, 'message': '表格不存在'}), 404
         
-        # 删除表格版本记录
-        TableDocumentVersion.query.filter_by(table_document_id=table_id).delete()
-        
-        # 删除表格
-        db.session.delete(table)
+        # 标记为删除
+        table.is_deleted = True
+        table.deleted_at = datetime.now()
         db.session.commit()
         
         return jsonify({
             'code': 200,
-            'message': '删除成功'
+            'message': '已移至回收站'
         }), 200
     except Exception as e:
         logger.error(f"删除表格接口异常: {str(e)}", exc_info=True)
@@ -1204,7 +1543,7 @@ def get_whiteboards():
     """获取用户的白板列表"""
     try:
         user_id = get_jwt_identity()
-        whiteboards = Whiteboard.query.filter_by(user_id=user_id).order_by(Whiteboard.updated_at.desc()).all()
+        whiteboards = Whiteboard.query.filter_by(user_id=user_id, is_deleted=False).order_by(Whiteboard.updated_at.desc()).all()
         
         return jsonify({
             'code': 200,
@@ -1313,24 +1652,22 @@ def update_whiteboard(whiteboard_id):
 @app.route('/api/whiteboards/<int:whiteboard_id>', methods=['DELETE'])
 @jwt_required()
 def delete_whiteboard(whiteboard_id):
-    """删除白板"""
+    """删除白板（移动到回收站）"""
     try:
         user_id = get_jwt_identity()
-        whiteboard = Whiteboard.query.filter_by(id=whiteboard_id, user_id=user_id).first()
+        whiteboard = Whiteboard.query.filter_by(id=whiteboard_id, user_id=user_id, is_deleted=False).first()
         
         if not whiteboard:
             return jsonify({'code': 404, 'message': '白板不存在'}), 404
         
-        # 删除白板版本记录
-        WhiteboardVersion.query.filter_by(whiteboard_id=whiteboard_id).delete()
-        
-        # 删除白板
-        db.session.delete(whiteboard)
+        # 标记为删除
+        whiteboard.is_deleted = True
+        whiteboard.deleted_at = datetime.now()
         db.session.commit()
         
         return jsonify({
             'code': 200,
-            'message': '删除成功'
+            'message': '已移至回收站'
         }), 200
     except Exception as e:
         logger.error(f"删除白板接口异常: {str(e)}", exc_info=True)
@@ -1449,7 +1786,7 @@ def get_mindmaps():
     """获取用户的脑图列表"""
     try:
         user_id = get_jwt_identity()
-        mindmaps = Mindmap.query.filter_by(user_id=user_id).order_by(Mindmap.updated_at.desc()).all()
+        mindmaps = Mindmap.query.filter_by(user_id=user_id, is_deleted=False).order_by(Mindmap.updated_at.desc()).all()
         
         return jsonify({
             'code': 200,
@@ -1610,24 +1947,22 @@ def update_mindmap(mindmap_id):
 @app.route('/api/mindmaps/<int:mindmap_id>', methods=['DELETE'])
 @jwt_required()
 def delete_mindmap(mindmap_id):
-    """删除脑图"""
+    """删除脑图（移动到回收站）"""
     try:
         user_id = get_jwt_identity()
-        mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id).first()
+        mindmap = Mindmap.query.filter_by(id=mindmap_id, user_id=user_id, is_deleted=False).first()
         
         if not mindmap:
             return jsonify({'code': 404, 'message': '脑图不存在'}), 404
         
-        # 删除脑图版本记录
-        MindmapVersion.query.filter_by(mindmap_id=mindmap_id).delete()
-        
-        # 删除脑图
-        db.session.delete(mindmap)
+        # 标记为删除
+        mindmap.is_deleted = True
+        mindmap.deleted_at = datetime.now()
         db.session.commit()
         
         return jsonify({
             'code': 200,
-            'message': '删除成功'
+            'message': '已移至回收站'
         }), 200
     except Exception as e:
         logger.error(f"删除脑图接口异常: {str(e)}", exc_info=True)
@@ -1716,31 +2051,31 @@ def rollback_mindmap_version(mindmap_id, version_id):
         logger.error(f"回滚脑图版本接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
-# -------------------------- 共享链接管理接口 --------------------------
-@app.route('/api/share-links', methods=['POST'])
+# -------------------------- 统一分享系统接口 --------------------------
+@app.route('/api/shares', methods=['POST'])
 @jwt_required()
-def create_share_link():
-    """创建共享链接"""
+def create_share():
+    """创建分享链接（统一接口）"""
     try:
         user_id = get_jwt_identity()
         data = request.json
         
-        # 验证资源所有权
         resource_id = data.get('resource_id')
         resource_type = data.get('resource_type')
+        permission = data.get('permission', 'view')
+        expire_days = data.get('expire_days', 7)
         is_collaborative = data.get('is_collaborative', False)
         
-        # 支持的资源类型列表
-        supported_types = ['note', 'flowchart', 'mindmap', 'table_document', 'whiteboard']
+        supported_types = ['note', 'flowchart', 'mindmap', 'table_document', 'whiteboard', 'knowledge_graph']
         
         if resource_type not in supported_types:
-            return jsonify({'code': 400, 'message': f'不支持的资源类型，支持的类型包括: {supported_types}'}), 400
+            return jsonify({'code': 400, 'message': f'不支持的资源类型，支持: {", ".join(supported_types)}'}), 400
         
-        # 检查资源是否存在并属于当前用户
-        query = {
-            'id': resource_id,
-            'user_id': user_id
-        }
+        if permission not in ['view', 'edit']:
+            return jsonify({'code': 400, 'message': '权限类型只能是 view 或 edit'}), 400
+        
+        query = {'id': resource_id, 'user_id': user_id}
+        resource = None
         
         if resource_type == 'note':
             resource = Note.query.filter_by(**query).first()
@@ -1752,42 +2087,247 @@ def create_share_link():
             resource = TableDocument.query.filter_by(**query).first()
         elif resource_type == 'whiteboard':
             resource = Whiteboard.query.filter_by(**query).first()
+        elif resource_type == 'knowledge_graph':
+            resource = KnowledgeGraph.query.filter_by(**query).first()
         
         if not resource:
             return jsonify({'code': 404, 'message': '资源不存在或无权限'}), 404
         
-        # 创建共享链接
+        existing_link = ShareLink.query.filter_by(
+            **{f'{resource_type}_id': resource_id},
+            permission=permission
+        ).first()
+        
+        if existing_link:
+            return jsonify({'code': 400, 'message': f'已存在{permission}权限的分享链接'}), 400
+        
         share_link = ShareLink(
             **{f'{resource_type}_id': resource_id},
             token=str(uuid.uuid4()),
             room_id=str(uuid.uuid4()) if is_collaborative else None,
-            permission=data.get('permission', 'view'),
+            permission=permission,
             is_collaborative=is_collaborative,
-            expire_at=datetime.now() + timedelta(days=data.get('expire_days', 7))
+            expire_at=datetime.now() + timedelta(days=expire_days)
         )
         
         db.session.add(share_link)
         db.session.commit()
         
         response_data = {
+            'id': share_link.id,
             'token': share_link.token,
             'permission': share_link.permission,
             'expire_at': share_link.expire_at.isoformat(),
-            'is_collaborative': share_link.is_collaborative
+            'is_collaborative': share_link.is_collaborative,
+            'created_at': share_link.created_at.isoformat()
         }
         
-        # 如果是协作文档，返回房间ID
-        if is_collaborative:
+        if is_collaborative and share_link.room_id:
             response_data['room_id'] = share_link.room_id
         
         return jsonify({
             'code': 201,
-            'message': '创建成功',
+            'message': '分享链接创建成功',
             'data': response_data
         }), 201
     except Exception as e:
-        logger.error(f"创建共享链接接口异常: {str(e)}", exc_info=True)
+        logger.error(f"创建分享链接接口异常: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'message': f'服务器内部错误: {str(e)}'}), 500
+
+
+@app.route('/api/shares/list', methods=['POST'])
+@jwt_required()
+def get_shares_list():
+    """获取资源的分享链接列表"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        
+        resource_id = data.get('resource_id')
+        resource_type = data.get('resource_type')
+        
+        supported_types = ['note', 'flowchart', 'mindmap', 'table_document', 'whiteboard', 'knowledge_graph']
+        
+        if resource_type not in supported_types:
+            return jsonify({'code': 400, 'message': f'不支持的资源类型'}), 400
+        
+        query = {'id': resource_id, 'user_id': user_id}
+        resource = None
+        
+        if resource_type == 'note':
+            resource = Note.query.filter_by(**query).first()
+        elif resource_type == 'flowchart':
+            resource = Flowchart.query.filter_by(**query).first()
+        elif resource_type == 'mindmap':
+            resource = Mindmap.query.filter_by(**query).first()
+        elif resource_type == 'table_document':
+            resource = TableDocument.query.filter_by(**query).first()
+        elif resource_type == 'whiteboard':
+            resource = Whiteboard.query.filter_by(**query).first()
+        elif resource_type == 'knowledge_graph':
+            resource = KnowledgeGraph.query.filter_by(**query).first()
+        
+        if not resource:
+            return jsonify({'code': 404, 'message': '资源不存在或无权限'}), 404
+        
+        share_links = ShareLink.query.filter_by(**{f'{resource_type}_id': resource_id}).all()
+        
+        shares = []
+        for link in share_links:
+            shares.append({
+                'id': link.id,
+                'token': link.token,
+                'permission': link.permission,
+                'expire_at': link.expire_at.isoformat() if link.expire_at else None,
+                'is_collaborative': link.is_collaborative,
+                'room_id': link.room_id,
+                'created_at': link.created_at.isoformat()
+            })
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': shares
+        }), 200
+    except Exception as e:
+        logger.error(f"获取分享链接列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/shares/<int:share_id>', methods=['PUT'])
+@jwt_required()
+def update_share(share_id):
+    """更新分享链接（修改权限或过期时间）"""
+    try:
+        user_id = get_jwt_identity()
+        share_link = ShareLink.query.get(share_id)
+        
+        if not share_link:
+            return jsonify({'code': 404, 'message': '分享链接不存在'}), 404
+        
+        has_permission = False
+        if share_link.note_id:
+            has_permission = Note.query.filter_by(id=share_link.note_id, user_id=user_id).first() is not None
+        elif share_link.flowchart_id:
+            has_permission = Flowchart.query.filter_by(id=share_link.flowchart_id, user_id=user_id).first() is not None
+        elif share_link.mindmap_id:
+            has_permission = Mindmap.query.filter_by(id=share_link.mindmap_id, user_id=user_id).first() is not None
+        elif share_link.table_document_id:
+            has_permission = TableDocument.query.filter_by(id=share_link.table_document_id, user_id=user_id).first() is not None
+        elif share_link.whiteboard_id:
+            has_permission = Whiteboard.query.filter_by(id=share_link.whiteboard_id, user_id=user_id).first() is not None
+        elif share_link.knowledge_graph_id:
+            has_permission = KnowledgeGraph.query.filter_by(id=share_link.knowledge_graph_id, user_id=user_id).first() is not None
+        
+        if not has_permission:
+            return jsonify({'code': 403, 'message': '无权修改此分享链接'}), 403
+        
+        data = request.json
+        
+        if 'permission' in data:
+            new_permission = data['permission']
+            if new_permission not in ['view', 'edit']:
+                return jsonify({'code': 400, 'message': '权限类型只能是 view 或 edit'}), 400
+            
+            resource_type = None
+            resource_id = None
+            if share_link.note_id:
+                resource_type = 'note'
+                resource_id = share_link.note_id
+            elif share_link.flowchart_id:
+                resource_type = 'flowchart'
+                resource_id = share_link.flowchart_id
+            elif share_link.mindmap_id:
+                resource_type = 'mindmap'
+                resource_id = share_link.mindmap_id
+            elif share_link.table_document_id:
+                resource_type = 'table_document'
+                resource_id = share_link.table_document_id
+            elif share_link.whiteboard_id:
+                resource_type = 'whiteboard'
+                resource_id = share_link.whiteboard_id
+            elif share_link.knowledge_graph_id:
+                resource_type = 'knowledge_graph'
+                resource_id = share_link.knowledge_graph_id
+            
+            if resource_type and resource_id:
+                existing_link = ShareLink.query.filter(
+                    ShareLink.id != share_id,
+                    **{f'{resource_type}_id': resource_id},
+                    permission=new_permission
+                ).first()
+                if existing_link:
+                    return jsonify({'code': 400, 'message': f'已存在{new_permission}权限的分享链接'}), 400
+            
+            share_link.permission = new_permission
+        
+        if 'expire_days' in data:
+            share_link.expire_at = datetime.now() + timedelta(days=data['expire_days'])
+        
+        if 'is_collaborative' in data:
+            share_link.is_collaborative = data['is_collaborative']
+            if data['is_collaborative'] and not share_link.room_id:
+                share_link.room_id = str(uuid.uuid4())
+            elif not data['is_collaborative']:
+                share_link.room_id = None
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功',
+            'data': {
+                'id': share_link.id,
+                'token': share_link.token,
+                'permission': share_link.permission,
+                'expire_at': share_link.expire_at.isoformat() if share_link.expire_at else None,
+                'is_collaborative': share_link.is_collaborative,
+                'room_id': share_link.room_id
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"更新分享链接接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/shares/<int:share_id>', methods=['DELETE'])
+@jwt_required()
+def delete_share(share_id):
+    """删除分享链接"""
+    try:
+        user_id = get_jwt_identity()
+        share_link = ShareLink.query.get(share_id)
+        
+        if not share_link:
+            return jsonify({'code': 404, 'message': '分享链接不存在'}), 404
+        
+        has_permission = False
+        if share_link.note_id:
+            has_permission = Note.query.filter_by(id=share_link.note_id, user_id=user_id).first() is not None
+        elif share_link.flowchart_id:
+            has_permission = Flowchart.query.filter_by(id=share_link.flowchart_id, user_id=user_id).first() is not None
+        elif share_link.mindmap_id:
+            has_permission = Mindmap.query.filter_by(id=share_link.mindmap_id, user_id=user_id).first() is not None
+        elif share_link.table_document_id:
+            has_permission = TableDocument.query.filter_by(id=share_link.table_document_id, user_id=user_id).first() is not None
+        elif share_link.whiteboard_id:
+            has_permission = Whiteboard.query.filter_by(id=share_link.whiteboard_id, user_id=user_id).first() is not None
+        elif share_link.knowledge_graph_id:
+            has_permission = KnowledgeGraph.query.filter_by(id=share_link.knowledge_graph_id, user_id=user_id).first() is not None
+        
+        if not has_permission:
+            return jsonify({'code': 403, 'message': '无权删除此分享链接'}), 403
+        
+        db.session.delete(share_link)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"删除分享链接接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 # -------------------------- 定时任务 --------------------------
 def clean_expired_share_links():
@@ -2018,6 +2558,7 @@ def get_admin_stats():
             'totalWhiteboards': Whiteboard.query.count(),
             'totalMindmaps': Mindmap.query.count(),
             'totalFlowcharts': Flowchart.query.count(),
+            'totalKnowledgeGraphs': KnowledgeGraph.query.count(),
             'recentUserGrowth': recent_user_growth  # 最近7天用户增长
         }
         
@@ -2433,9 +2974,12 @@ def static_files(filename):
 
 # -------------------------- 分享内容接口 --------------------------
 @app.route('/api/share/<string:token>', methods=['GET'])
+@jwt_required()
 def get_shared_content(token):
-    """获取分享内容"""
+    """获取分享内容（需要登录）"""
     try:
+        user_id = get_jwt_identity()
+        
         # 查找分享链接
         share_link = ShareLink.query.filter_by(token=token).first()
         if not share_link:
@@ -2498,6 +3042,14 @@ def get_shared_content(token):
                 'type': 'whiteboard',
                 'whiteboard': whiteboard.to_dict()
             })
+        elif share_link.knowledge_graph_id:
+            graph = KnowledgeGraph.query.get(share_link.knowledge_graph_id)
+            if not graph:
+                return jsonify({'code': 404, 'message': '分享的知识图谱不存在'}), 404
+            response.update({
+                'type': 'knowledge_graph',
+                'knowledge_graph': graph.to_dict()
+            })
         else:
             return jsonify({'code': 404, 'message': '分享链接无效'}), 404
         
@@ -2507,223 +3059,7 @@ def get_shared_content(token):
         return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
 
 
-@app.route('/share/<string:token>', methods=['GET'])
-def get_shared_content_html(token):
-    """获取分享内容（直接返回HTML）"""
-    try:
-        # 查找分享链接
-        share_link = ShareLink.query.filter_by(token=token).first()
-        if not share_link:
-            return '''
-            <html>
-            <head>
-                <title>分享链接无效</title>
-                <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                    .error { color: red; font-size: 24px; }
-                </style>
-            </head>
-            <body>
-                <div class="error">分享链接无效或已过期</div>
-                <p>请检查链接是否正确，或联系分享者获取新的链接</p>
-            </body>
-            </html>
-            ''', 404
-        
-        # 检查是否过期
-        if share_link.expire_at and share_link.expire_at < datetime.now():
-            return '''
-            <html>
-            <head>
-                <title>分享链接已过期</title>
-                <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                    .error { color: red; font-size: 24px; }
-                </style>
-            </head>
-            <body>
-                <div class="error">分享链接已过期</div>
-                <p>请联系分享者获取新的链接</p>
-            </body>
-            </html>
-            ''', 410
-        
-        # 根据类型返回HTML内容
-        if share_link.note_id:
-            note = Note.query.get(share_link.note_id)
-            if not note:
-                return '''
-                <html>
-                <head>
-                    <title>分享内容不存在</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                        .error { color: red; font-size: 24px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="error">分享的内容不存在</div>
-                    <p>请联系分享者获取新的链接</p>
-                </body>
-                </html>
-                ''', 404
-            
-            # 生成笔记的HTML内容
-            content = note.content
-            if isinstance(content, str):
-                try:
-                    import json
-                    content_obj = json.loads(content)
-                    if isinstance(content_obj, dict) and 'ops' in content_obj:
-                        # 处理富文本内容
-                        html_content = ''
-                        for op in content_obj['ops']:
-                            if 'insert' in op:
-                                html_content += op['insert'].replace('\n', '<br>')
-                        content = html_content
-                except:
-                    # 如果解析失败，直接使用原始内容
-                    content = content.replace('\n', '<br>')
-            
-            return f'''
-            <html>
-            <head>
-                <title>{note.title}</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
-                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
-                    .content {{ margin-top: 20px; line-height: 1.6; }}
-                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
-                </style>
-            </head>
-            <body>
-                <h1>{note.title}</h1>
-                <div class="content">{content}</div>
-                <div class="meta">
-                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
-                </div>
-            </body>
-            </html>
-            '''
-        elif share_link.flowchart_id:
-            flowchart = Flowchart.query.get(share_link.flowchart_id)
-            if not flowchart:
-                return '''
-                <html>
-                <head>
-                    <title>分享内容不存在</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                        .error { color: red; font-size: 24px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="error">分享的内容不存在</div>
-                    <p>请联系分享者获取新的链接</p>
-                </body>
-                </html>
-                ''', 404
-            
-            return f'''
-            <html>
-            <head>
-                <title>{flowchart.title}</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
-                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
-                    .content {{ margin-top: 20px; }}
-                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
-                </style>
-            </head>
-            <body>
-                <h1>{flowchart.title}</h1>
-                <div class="content">
-                    <p>这是一个流程图分享</p>
-                    <p>描述: {flowchart.description or '无'}</p>
-                </div>
-                <div class="meta">
-                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
-                </div>
-            </body>
-            </html>
-            '''
-        elif share_link.mindmap_id:
-            mindmap = Mindmap.query.get(share_link.mindmap_id)
-            if not mindmap:
-                return '''
-                <html>
-                <head>
-                    <title>分享内容不存在</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                        .error { color: red; font-size: 24px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="error">分享的内容不存在</div>
-                    <p>请联系分享者获取新的链接</p>
-                </body>
-                </html>
-                ''', 404
-            
-            return f'''
-            <html>
-            <head>
-                <title>{mindmap.title}</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }}
-                    h1 {{ color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }}
-                    .content {{ margin-top: 20px; }}
-                    .meta {{ margin-top: 30px; font-size: 12px; color: #999; }}
-                </style>
-            </head>
-            <body>
-                <h1>{mindmap.title}</h1>
-                <div class="content">
-                    <p>这是一个脑图分享</p>
-                </div>
-                <div class="meta">
-                    <p>分享时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                    <p>权限: {'只读' if share_link.permission == 'view' else '可编辑'}</p>
-                </div>
-            </body>
-            </html>
-            '''
-        else:
-            return '''
-            <html>
-            <head>
-                <title>分享链接无效</title>
-                <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                    .error { color: red; font-size: 24px; }
-                </style>
-            </head>
-            <body>
-                <div class="error">分享链接无效</div>
-                <p>请联系分享者获取新的链接</p>
-            </body>
-            </html>
-            ''', 404
-    except Exception as e:
-        logger.error(f"获取分享内容HTML接口异常: {str(e)}", exc_info=True)
-        return '''
-        <html>
-        <head>
-            <title>服务器错误</title>
-            <style>
-                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                .error { color: red; font-size: 24px; }
-            </style>
-        </head>
-        <body>
-            <div class="error">服务器内部错误</div>
-            <p>请稍后重试</p>
-        </body>
-        </html>
-        ''', 500
+
 
 # -------------------------- WebSocket事件处理 --------------------------
 @socketio.on('connect')
@@ -2881,6 +3217,734 @@ def handle_get_document_state(data):
         'doc_type': doc_type,
         **doc_state
     })
+
+# -------------------------- 回收站接口 --------------------------
+@app.route('/api/trash', methods=['GET'])
+@jwt_required()
+def get_trash():
+    """获取回收站列表"""
+    try:
+        user_id = get_jwt_identity()
+        
+        # 获取所有已删除的内容
+        trash_items = []
+        
+        # 获取删除的笔记
+        deleted_notes = Note.query.filter_by(user_id=user_id, is_deleted=True).order_by(Note.deleted_at.desc()).all()
+        for note in deleted_notes:
+            trash_items.append({
+                'id': note.id,
+                'title': note.title,
+                'type': 'note',
+                'deleted_at': note.deleted_at.isoformat() if note.deleted_at else None,
+                'updated_at': note.updated_at.isoformat() if note.updated_at else None
+            })
+        
+        # 获取删除的流程图
+        deleted_flowcharts = Flowchart.query.filter_by(user_id=user_id, is_deleted=True).order_by(Flowchart.deleted_at.desc()).all()
+        for flowchart in deleted_flowcharts:
+            trash_items.append({
+                'id': flowchart.id,
+                'title': flowchart.title,
+                'type': 'flowchart',
+                'deleted_at': flowchart.deleted_at.isoformat() if flowchart.deleted_at else None,
+                'updated_at': flowchart.updated_at.isoformat() if flowchart.updated_at else None
+            })
+        
+        # 获取删除的表格
+        deleted_tables = TableDocument.query.filter_by(user_id=user_id, is_deleted=True).order_by(TableDocument.deleted_at.desc()).all()
+        for table in deleted_tables:
+            trash_items.append({
+                'id': table.id,
+                'title': table.title,
+                'type': 'table',
+                'deleted_at': table.deleted_at.isoformat() if table.deleted_at else None,
+                'updated_at': table.updated_at.isoformat() if table.updated_at else None
+            })
+        
+        # 获取删除的白板
+        deleted_whiteboards = Whiteboard.query.filter_by(user_id=user_id, is_deleted=True).order_by(Whiteboard.deleted_at.desc()).all()
+        for whiteboard in deleted_whiteboards:
+            trash_items.append({
+                'id': whiteboard.id,
+                'title': whiteboard.title,
+                'type': 'whiteboard',
+                'deleted_at': whiteboard.deleted_at.isoformat() if whiteboard.deleted_at else None,
+                'updated_at': whiteboard.updated_at.isoformat() if whiteboard.updated_at else None
+            })
+        
+        # 获取删除的脑图
+        deleted_mindmaps = Mindmap.query.filter_by(user_id=user_id, is_deleted=True).order_by(Mindmap.deleted_at.desc()).all()
+        for mindmap in deleted_mindmaps:
+            trash_items.append({
+                'id': mindmap.id,
+                'title': mindmap.title,
+                'type': 'mindmap',
+                'deleted_at': mindmap.deleted_at.isoformat() if mindmap.deleted_at else None,
+                'updated_at': mindmap.updated_at.isoformat() if mindmap.updated_at else None
+            })
+        
+        # 按删除时间排序
+        trash_items.sort(key=lambda x: x['deleted_at'], reverse=True)
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': trash_items
+        }), 200
+    except Exception as e:
+        logger.error(f"获取回收站列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/trash/restore', methods=['POST'])
+@jwt_required()
+def restore_trash():
+    """恢复回收站中的项目"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        item_id = data.get('id')
+        item_type = data.get('type')
+        
+        if not item_id or not item_type:
+            return jsonify({'code': 400, 'message': '参数不能为空'}), 400
+        
+        # 根据类型恢复对应的项目
+        restored = False
+        
+        if item_type == 'note':
+            note = Note.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if note:
+                note.is_deleted = False
+                note.deleted_at = None
+                restored = True
+        elif item_type == 'flowchart':
+            flowchart = Flowchart.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if flowchart:
+                flowchart.is_deleted = False
+                flowchart.deleted_at = None
+                restored = True
+        elif item_type == 'table':
+            table = TableDocument.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if table:
+                table.is_deleted = False
+                table.deleted_at = None
+                restored = True
+        elif item_type == 'whiteboard':
+            whiteboard = Whiteboard.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if whiteboard:
+                whiteboard.is_deleted = False
+                whiteboard.deleted_at = None
+                restored = True
+        elif item_type == 'mindmap':
+            mindmap = Mindmap.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if mindmap:
+                mindmap.is_deleted = False
+                mindmap.deleted_at = None
+                restored = True
+        
+        if not restored:
+            return jsonify({'code': 404, 'message': '项目不存在或已被恢复'}), 404
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '恢复成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"恢复回收站项目接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/trash/delete', methods=['POST'])
+@jwt_required()
+def delete_trash_permanently():
+    """永久删除回收站中的项目"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        item_id = data.get('id')
+        item_type = data.get('type')
+        
+        if not item_id or not item_type:
+            return jsonify({'code': 400, 'message': '参数不能为空'}), 400
+        
+        # 根据类型永久删除对应的项目
+        deleted = False
+        
+        if item_type == 'note':
+            note = Note.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if note:
+                NoteVersion.query.filter_by(note_id=item_id).delete()
+                ShareLink.query.filter_by(note_id=item_id).delete()
+                db.session.delete(note)
+                deleted = True
+        elif item_type == 'flowchart':
+            flowchart = Flowchart.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if flowchart:
+                FlowchartVersion.query.filter_by(flowchart_id=item_id).delete()
+                ShareLink.query.filter_by(flowchart_id=item_id).delete()
+                db.session.delete(flowchart)
+                deleted = True
+        elif item_type == 'table':
+            table = TableDocument.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if table:
+                TableDocumentVersion.query.filter_by(table_document_id=item_id).delete()
+                db.session.delete(table)
+                deleted = True
+        elif item_type == 'whiteboard':
+            whiteboard = Whiteboard.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if whiteboard:
+                WhiteboardVersion.query.filter_by(whiteboard_id=item_id).delete()
+                ShareLink.query.filter_by(whiteboard_id=item_id).delete()
+                db.session.delete(whiteboard)
+                deleted = True
+        elif item_type == 'mindmap':
+            mindmap = Mindmap.query.filter_by(id=item_id, user_id=user_id, is_deleted=True).first()
+            if mindmap:
+                MindmapVersion.query.filter_by(mindmap_id=item_id).delete()
+                ShareLink.query.filter_by(mindmap_id=item_id).delete()
+                db.session.delete(mindmap)
+                deleted = True
+        
+        if not deleted:
+            return jsonify({'code': 404, 'message': '项目不存在'}), 404
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '永久删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"永久删除回收站项目接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/trash/clear', methods=['DELETE'])
+@jwt_required()
+def clear_trash():
+    """清空回收站"""
+    try:
+        user_id = get_jwt_identity()
+        
+        # 删除所有已删除的笔记及其版本和分享链接
+        deleted_notes = Note.query.filter_by(user_id=user_id, is_deleted=True).all()
+        for note in deleted_notes:
+            NoteVersion.query.filter_by(note_id=note.id).delete()
+            ShareLink.query.filter_by(note_id=note.id).delete()
+            db.session.delete(note)
+        
+        # 删除所有已删除的流程图及其版本和分享链接
+        deleted_flowcharts = Flowchart.query.filter_by(user_id=user_id, is_deleted=True).all()
+        for flowchart in deleted_flowcharts:
+            FlowchartVersion.query.filter_by(flowchart_id=flowchart.id).delete()
+            ShareLink.query.filter_by(flowchart_id=flowchart.id).delete()
+            db.session.delete(flowchart)
+        
+        # 删除所有已删除的表格及其版本
+        deleted_tables = TableDocument.query.filter_by(user_id=user_id, is_deleted=True).all()
+        for table in deleted_tables:
+            TableDocumentVersion.query.filter_by(table_document_id=table.id).delete()
+            db.session.delete(table)
+        
+        # 删除所有已删除的白板及其版本和分享链接
+        deleted_whiteboards = Whiteboard.query.filter_by(user_id=user_id, is_deleted=True).all()
+        for whiteboard in deleted_whiteboards:
+            WhiteboardVersion.query.filter_by(whiteboard_id=whiteboard.id).delete()
+            ShareLink.query.filter_by(whiteboard_id=whiteboard.id).delete()
+            db.session.delete(whiteboard)
+        
+        # 删除所有已删除的脑图及其版本和分享链接
+        deleted_mindmaps = Mindmap.query.filter_by(user_id=user_id, is_deleted=True).all()
+        for mindmap in deleted_mindmaps:
+            MindmapVersion.query.filter_by(mindmap_id=mindmap.id).delete()
+            ShareLink.query.filter_by(mindmap_id=mindmap.id).delete()
+            db.session.delete(mindmap)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '清空回收站成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"清空回收站接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+# -------------------------- 知识图谱相关接口 --------------------------
+@app.route('/api/knowledge-graphs', methods=['GET'])
+@jwt_required()
+def get_knowledge_graphs():
+    """获取用户的知识图谱列表"""
+    try:
+        user_id = get_jwt_identity()
+        
+        search_query = request.args.get('search', '')
+        
+        query = KnowledgeGraph.query.filter_by(user_id=user_id)
+        
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    KnowledgeGraph.name.ilike(f'%{search_query}%'),
+                    KnowledgeGraph.description.ilike(f'%{search_query}%')
+                )
+            )
+        
+        graphs = query.order_by(KnowledgeGraph.created_at.desc()).all()
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': [graph.to_dict() for graph in graphs]
+        }), 200
+    except Exception as e:
+        logger.error(f"获取知识图谱列表接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs', methods=['POST'])
+@jwt_required()
+def create_knowledge_graph():
+    """创建知识图谱"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        
+        if not data or not data.get('name'):
+            return jsonify({'code': 400, 'message': '图谱名称不能为空'}), 400
+        
+        existing_graph = KnowledgeGraph.query.filter_by(user_id=user_id, name=data.get('name')).first()
+        if existing_graph:
+            return jsonify({'code': 400, 'message': '图谱名称已存在'}), 400
+        
+        graph = KnowledgeGraph(
+            name=data.get('name'),
+            description=data.get('description'),
+            user_id=user_id
+        )
+        
+        db.session.add(graph)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '创建成功',
+            'data': graph.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"创建知识图谱接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>', methods=['GET'])
+@jwt_required()
+def get_knowledge_graph(graph_id):
+    """获取知识图谱详情"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        nodes = [node.to_dict() for node in graph.nodes]
+        relations = [relation.to_dict() for relation in graph.relations]
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': {
+                'graph': graph.to_dict(),
+                'nodes': nodes,
+                'relations': relations
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"获取知识图谱详情接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>', methods=['PUT'])
+@jwt_required()
+def update_knowledge_graph(graph_id):
+    """更新知识图谱"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        data = request.json
+        if 'name' in data and data['name'] != graph.name:
+            existing_graph = KnowledgeGraph.query.filter_by(user_id=user_id, name=data['name']).first()
+            if existing_graph:
+                return jsonify({'code': 400, 'message': '图谱名称已存在'}), 400
+            graph.name = data['name']
+        if 'description' in data:
+            graph.description = data['description']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功',
+            'data': graph.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"更新知识图谱接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>', methods=['DELETE'])
+@jwt_required()
+def delete_knowledge_graph(graph_id):
+    """删除知识图谱"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        db.session.delete(graph)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"删除知识图谱接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/nodes', methods=['POST'])
+@jwt_required()
+def create_knowledge_node(graph_id):
+    """在知识图谱中创建节点"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        data = request.json
+        if not data or not data.get('name'):
+            return jsonify({'code': 400, 'message': '节点名称不能为空'}), 400
+        
+        node = KnowledgeNode(
+            type=data.get('type', 'concept'),
+            name=data.get('name'),
+            content=data.get('content'),
+            properties=data.get('properties'),
+            graph_id=graph_id
+        )
+        
+        db.session.add(node)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '创建成功',
+            'data': node.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"创建知识节点接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/nodes/<int:node_id>', methods=['PUT'])
+@jwt_required()
+def update_knowledge_node(graph_id, node_id):
+    """更新知识节点"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        node = KnowledgeNode.query.filter_by(id=node_id, graph_id=graph_id).first()
+        if not node:
+            return jsonify({'code': 404, 'message': '节点不存在'}), 404
+        
+        data = request.json
+        if 'type' in data:
+            node.type = data['type']
+        if 'name' in data:
+            node.name = data['name']
+        if 'content' in data:
+            node.content = data['content']
+        if 'properties' in data:
+            node.properties = data['properties']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功',
+            'data': node.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"更新知识节点接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/nodes/<int:node_id>', methods=['DELETE'])
+@jwt_required()
+def delete_knowledge_node(graph_id, node_id):
+    """删除知识节点"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        node = KnowledgeNode.query.filter_by(id=node_id, graph_id=graph_id).first()
+        if not node:
+            return jsonify({'code': 404, 'message': '节点不存在'}), 404
+        
+        db.session.delete(node)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"删除知识节点接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/relations', methods=['POST'])
+@jwt_required()
+def create_knowledge_relation(graph_id):
+    """在知识图谱中创建关系"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        data = request.json
+        if not data or not data.get('source_id') or not data.get('target_id'):
+            return jsonify({'code': 400, 'message': '源节点和目标节点不能为空'}), 400
+        
+        source_node = KnowledgeNode.query.filter_by(id=data['source_id'], graph_id=graph_id).first()
+        target_node = KnowledgeNode.query.filter_by(id=data['target_id'], graph_id=graph_id).first()
+        
+        if not source_node or not target_node:
+            return jsonify({'code': 404, 'message': '源节点或目标节点不存在'}), 404
+        
+        relation = KnowledgeRelation(
+            type=data.get('type', 'related'),
+            label=data.get('label'),
+            properties=data.get('properties'),
+            graph_id=graph_id,
+            source_id=data['source_id'],
+            target_id=data['target_id']
+        )
+        
+        db.session.add(relation)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '创建成功',
+            'data': relation.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"创建知识关系接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/relations/<int:relation_id>', methods=['PUT'])
+@jwt_required()
+def update_knowledge_relation(graph_id, relation_id):
+    """更新知识关系"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        relation = KnowledgeRelation.query.filter_by(id=relation_id, graph_id=graph_id).first()
+        if not relation:
+            return jsonify({'code': 404, 'message': '关系不存在'}), 404
+        
+        data = request.json
+        if 'type' in data:
+            relation.type = data['type']
+        if 'label' in data:
+            relation.label = data['label']
+        if 'properties' in data:
+            relation.properties = data['properties']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '更新成功',
+            'data': relation.to_dict()
+        }), 200
+    except Exception as e:
+        logger.error(f"更新知识关系接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+@app.route('/api/knowledge-graphs/<int:graph_id>/relations/<int:relation_id>', methods=['DELETE'])
+@jwt_required()
+def delete_knowledge_relation(graph_id, relation_id):
+    """删除知识关系"""
+    try:
+        user_id = get_jwt_identity()
+        graph = KnowledgeGraph.query.filter_by(id=graph_id, user_id=user_id).first()
+        
+        if not graph:
+            return jsonify({'code': 404, 'message': '知识图谱不存在'}), 404
+        
+        relation = KnowledgeRelation.query.filter_by(id=relation_id, graph_id=graph_id).first()
+        if not relation:
+            return jsonify({'code': 404, 'message': '关系不存在'}), 404
+        
+        db.session.delete(relation)
+        db.session.commit()
+        
+        return jsonify({
+            'code': 200,
+            'message': '删除成功'
+        }), 200
+    except Exception as e:
+        logger.error(f"删除知识关系接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': '服务器内部错误'}), 500
+
+
+# -------------------------- 语音转写 API --------------------------
+# 延迟导入 Whisper，避免启动时加载模型
+def load_whisper_model():
+    try:
+        import whisper
+        return whisper.load_model('base')
+    except ImportError:
+        return None
+
+whisper_model = None
+
+@app.route('/api/transcribe', methods=['POST'])
+@jwt_required()
+def transcribe_audio():
+    global whisper_model
+    
+    try:
+        logger.info("========== 语音转写接口开始 ==========")
+        
+        # 检查请求文件
+        logger.info("检查请求文件...")
+        if 'audio' not in request.files:
+            logger.error("请求中没有音频文件")
+            return jsonify({'code': 400, 'message': '请上传音频文件'}), 400
+        
+        audio_file = request.files['audio']
+        logger.info(f"音频文件: {audio_file.filename}")
+        
+        if audio_file.filename == '':
+            logger.error("音频文件名为空")
+            return jsonify({'code': 400, 'message': '请选择音频文件'}), 400
+        
+        # 检查文件大小
+        file_size = len(audio_file.read())
+        audio_file.seek(0)  # 重置文件指针
+        logger.info(f"音频文件大小: {file_size} bytes")
+        
+        if file_size == 0:
+            logger.error("音频文件为空")
+            return jsonify({'code': 400, 'message': '音频文件为空'}), 400
+        
+        # 加载 Whisper 模型（首次调用时加载）
+        if whisper_model is None:
+            try:
+                logger.info("开始加载 Whisper 模型...")
+                import whisper
+                logger.info("Whisper模块导入成功")
+                logger.info("正在加载base模型...")
+                whisper_model = whisper.load_model('base')
+                logger.info("Whisper 模型加载成功")
+            except ImportError as e:
+                logger.error(f"Whisper 模块未安装: {str(e)}")
+                return jsonify({
+                    'code': 500,
+                    'message': '未安装 Whisper 模块，请安装: pip install openai-whisper'
+                }), 500
+            except Exception as e:
+                logger.error(f"Whisper 模型加载失败: {str(e)}", exc_info=True)
+                return jsonify({
+                    'code': 500,
+                    'message': f'模型加载失败: {str(e)}'
+                }), 500
+        else:
+            logger.info("Whisper 模型已加载，跳过加载步骤")
+        
+        # 保存临时音频文件
+        import tempfile
+        import os
+        temp_path = None
+        try:
+            logger.info("正在保存临时音频文件...")
+            with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
+                audio_file.save(temp_file.name)
+                temp_path = temp_file.name
+            logger.info(f"临时文件保存成功: {temp_path}")
+            logger.info(f"临时文件大小: {os.path.getsize(temp_path)} bytes")
+        except Exception as e:
+            logger.error(f"临时文件保存失败: {str(e)}", exc_info=True)
+            return jsonify({
+                'code': 500,
+                'message': f'文件保存失败: {str(e)}'
+            }), 500
+        
+        try:
+            # 使用 Whisper 进行语音转写
+            logger.info("开始语音转写...")
+            result = whisper_model.transcribe(temp_path, language='zh')
+            logger.info(f"转写完成，结果长度: {len(result.get('text', ''))}")
+            
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+                logger.info("临时文件已清理")
+            
+            return jsonify({
+                'code': 200,
+                'data': {
+                    'text': result['text'],
+                    'segments': result.get('segments', [])
+                }
+            }), 200
+        except Exception as transcribe_error:
+            # 清理临时文件
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+                logger.info("转写失败，临时文件已清理")
+            logger.error(f"语音转写失败: {str(transcribe_error)}", exc_info=True)
+            return jsonify({
+                'code': 500,
+                'message': f'转写失败: {str(transcribe_error)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"语音转写接口异常: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'message': f'服务器内部错误: {str(e)}'}), 500
+
 
 # -------------------------- 主函数 --------------------------
 if __name__ == '__main__':
