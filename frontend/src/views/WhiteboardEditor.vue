@@ -32,10 +32,9 @@
       <div class="whiteboard-container">
         <iframe
           ref="wboIframe"
-          class="wbo-iframe"
           :src="wboUrl"
           frameborder="0"
-          allowfullscreen
+          style="width: 100%; height: 100%;"
         ></iframe>
       </div>
       
@@ -847,11 +846,11 @@ async function handleSave(silent = false) {
     await loadVersions()
     
     saveStatus.value = '已保存'
-    if (!silent) ElMessage.success('保存成功')
+    ElMessage.success('保存成功')
   } catch (error) {
     console.error('Save whiteboard error:', error)
     saveStatus.value = '保存失败'
-    if (!silent) ElMessage.error('保存失败: ' + (error.message || '服务器错误'))
+    ElMessage.error('保存失败: ' + (error.message || '服务器错误'))
   }
 }
 
@@ -905,13 +904,7 @@ onUnmounted(() => {
   border: 1px solid #e6e6e6;
   border-radius: 4px;
   overflow: hidden;
-}
-
-.wbo-iframe {
-  display: block;
-  width: 100%;
   height: 600px;
-  border: none;
 }
 
 .editor-footer {

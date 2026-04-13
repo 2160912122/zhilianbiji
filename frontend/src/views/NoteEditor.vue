@@ -16,6 +16,7 @@
             />
           </div>
           <div class="header-right">
+            <VoiceRecorder @insert="insertVoiceContent" />
             <AIModuleButton />
             <el-button @click="handleSave" type="primary">
               <el-icon><Check /></el-icon>
@@ -29,6 +30,7 @@
         <el-radio-group v-model="note.type" @change="handleTypeChange">
           <el-radio-button value="richtext">富文本</el-radio-button>
           <el-radio-button value="markdown">Markdown</el-radio-button>
+          <el-radio-button value="code">代码</el-radio-button>
         </el-radio-group>
         
         <el-select
@@ -80,6 +82,12 @@
           />
           <div class="markdown-preview" v-html="renderedMarkdown"></div>
         </div>
+        <div v-if="note.type === 'code'" class="code-editor-wrapper">
+          <CodeEditor
+            v-model="codeContent"
+            :language="codeLanguage"
+          />
+        </div>
       </div>
       
       <div class="editor-footer">
@@ -95,81 +103,11 @@
       </div>
     </el-card>
     
-    <el-dialog v-model="shareDialogVisible" title="分享笔记" width="700px">
-      <el-form label-width="80px">
-        <el-form-item label="权限">
-          <el-select v-model="shareData.permission">
-            <el-option label="只读" value="view" />
-            <el-option label="可编辑" value="edit" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="过期时间">
-          <el-select v-model="shareData.expireAt">
-            <el-option label="永不过期" value="" />
-            <el-option label="1分钟" value="1m" />
-            <el-option label="1天" value="1d" />
-            <el-option label="7天" value="7d" />
-            <el-option label="30天" value="30d" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="实时协作">
-          <el-switch v-model="shareData.is_collaborative" />
-          <span class="collab-tip">开启后，多人可同时编辑</span>
-        </el-form-item>
-        <el-form-item label="分享链接" v-if="shareUrl">
-          <el-input v-model="shareUrl" readonly>
-            <template #append>
-              <el-button @click="copyShareUrl">复制</el-button>
-            </template>
-          </el-input>
-        </el-form-item>
-        <el-form-item v-if="shareUrl">
-          <span class="share-info">此链接有效期至: {{ shareExpireDate || '永久' }}</span>
-        </el-form-item>
-      </el-form>
-      
-      <div v-if="existingShares.length > 0" class="existing-shares">
-        <h4>已存在的分享</h4>
-        <el-table :data="existingShares" style="width: 100%">
-          <el-table-column prop="share_url" label="链接" min-width="200">
-            <template #default="{ row }">
-              <el-input :value="row.share_url" readonly size="small" />
-            </template>
-          </el-table-column>
-          <el-table-column prop="permission" label="权限" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.permission === 'view' ? 'info' : 'success'">
-                {{ row.permission === 'view' ? '只读' : '可编辑' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180">
-            <template #default="{ row }">
-              {{ formatDate(row.created_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="expire_at" label="过期时间" width="180">
-            <template #default="{ row }">
-              {{ row.expire_at ? formatDate(row.expire_at) : '永久' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link type="danger" @click="deleteShare(row.token)">
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-      
-      <template #footer>
-        <el-button @click="shareDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="generateShareLink">
-          生成链接
-        </el-button>
-      </template>
-    </el-dialog>
+    <ShareDialog
+      v-model:visible="shareDialogVisible"
+      :resource-id="noteId"
+      resource-type="note"
+    />
     
     <el-drawer v-model="showVersions" title="版本历史" size="40%">
       <el-timeline>
@@ -200,11 +138,16 @@ import { useRoute } from 'vue-router'
 import { QuillEditor, Quill } from '@vueup/vue-quill'
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import { marked } from 'marked'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { noteAPI } from '@/api/note'
 import { categoryAPI, tagAPI } from '@/api/common'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAIStore } from '@/store/ai'
 import AIModuleButton from '@/components/AIModuleButton.vue'
+import VoiceRecorder from '@/components/VoiceRecorder.vue'
+import CodeEditor from '@/components/CodeEditor.vue'
+import ShareDialog from '@/components/ShareDialog.vue'
 // 导入WebSocket服务
 import { useSocket } from '@/utils/socket'
 
@@ -253,6 +196,9 @@ const note = ref({
   tags: []
 })
 
+const codeContent = ref('')
+const codeLanguage = ref('python')
+
 const categories = ref([])
 const tags = ref([])
 const selectedTags = ref([])
@@ -260,10 +206,6 @@ const showVersions = ref(false)
 const selectedVersion = ref(null)
 const versions = ref([])
 const shareDialogVisible = ref(false)
-const shareData = ref({ permission: 'view', expireAt: '', is_collaborative: false })
-const shareUrl = ref('')
-const shareExpireDate = ref('')
-const existingShares = ref([])
 const saveStatus = ref('')
 
 // 协作相关属性
@@ -291,13 +233,108 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
 
 let autoSaveTimer = null
 
+function renderLatex(content) {
+  if (!content) return ''
+  let result = content
+  
+  result = result.replace(/\$\$(.*?)\$\$/gms, (match, formula) => {
+    try {
+      return katex.renderToString(formula.trim(), {
+        displayMode: true,
+        throwOnError: false,
+        strict: false
+      })
+    } catch (e) {
+      return `<span class="katex-error">${formula}</span>`
+    }
+  })
+  
+  result = result.replace(/\$(.*?)\$/g, (match, formula) => {
+    try {
+      return katex.renderToString(formula.trim(), {
+        displayMode: false,
+        throwOnError: false,
+        strict: false
+      })
+    } catch (e) {
+      return `<span class="katex-error">${formula}</span>`
+    }
+  })
+  
+  return result
+}
+
+marked.setOptions({
+  highlight: function(code, lang) {
+    return highlightCode(code, lang)
+  },
+  langPrefix: 'language-'
+})
+
+function highlightCode(code, lang) {
+  const keywords = {
+    javascript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'class', 'import', 'export', 'from', 'async', 'await', 'new', 'this', 'try', 'catch', 'throw'],
+    python: ['def', 'return', 'if', 'else', 'elif', 'for', 'while', 'class', 'import', 'from', 'import', 'as', 'try', 'except', 'raise', 'with', 'lambda', 'True', 'False', 'None'],
+    java: ['public', 'private', 'protected', 'class', 'void', 'return', 'if', 'else', 'for', 'while', 'public', 'static', 'void', 'try', 'catch', 'throw', 'new', 'this'],
+    css: ['color', 'background', 'font', 'margin', 'padding', 'border', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom'],
+    html: ['div', 'span', 'p', 'h1', 'h2', 'h3', 'body', 'html', 'head', 'script', 'style', 'class', 'id'],
+    json: ['true', 'false', 'null']
+  }
+  
+  const langKeywords = keywords[lang] || []
+  let result = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  
+  langKeywords.forEach(keyword => {
+    const regex = new RegExp(`\\b(${keyword})\\b`, 'g')
+    result = result.replace(regex, '<span class="keyword">$1</span>')
+  })
+  
+  result = result.replace(/\b(\d+\.?\d*)\b/g, '<span class="number">$1</span>')
+  result = result.replace(/(".*?"|'.*?'|`.*?`)/g, '<span class="string">$1</span>')
+  result = result.replace(/\/\/.*/g, '<span class="comment">$&</span>')
+  result = result.replace(/\/\*[\s\S]*?\*\//g, '<span class="comment">$&</span>')
+  result = result.replace(/\#.*/g, '<span class="comment">$&</span>')
+  
+  return result
+}
+
 const renderedMarkdown = computed(() => {
   const content = note.value.content
   if (!content) return ''
   const contentStr = typeof content === 'object' ? JSON.stringify(content) : content
   if (!contentStr || contentStr === '{"ops":[]}') return ''
-  return marked(contentStr)
+  
+  let markdownHtml = marked(contentStr)
+  markdownHtml = renderLatex(markdownHtml)
+  
+  markdownHtml = markdownHtml.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (match, lang, code) => {
+    const escapedCode = code.replace(/<span class="keyword">/g, '').replace(/<\/span>/g, '').replace(/<span class="number">/g, '').replace(/<span class="string">/g, '').replace(/<span class="comment">/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    return `<pre class="code-block"><button class="copy-btn" data-lang="${lang}">复制</button><code class="language-${lang}">${code}</code></pre>`
+  })
+  
+  return markdownHtml
 })
+
+function handleCopyCode(event) {
+  const btn = event.target
+  if (btn.classList.contains('copy-btn')) {
+    event.preventDefault()
+    const codeBlock = btn.nextElementSibling
+    if (codeBlock) {
+      const code = codeBlock.textContent || codeBlock.innerText
+      navigator.clipboard.writeText(code).then(() => {
+        const originalText = btn.textContent
+        btn.textContent = '已复制'
+        setTimeout(() => {
+          btn.textContent = originalText
+        }, 2000)
+      })
+    }
+  }
+}
 
 const quillContent = computed(() => {
   if (note.value.type !== 'richtext') return null
@@ -529,18 +566,16 @@ function handleAutoSave() {
 
 async function handleSave(silent = false) {
   // 协作模式下通过WebSocket同步，不直接保存到后端
-  if (props['is-collaborative'] || props['is-shared']) {
-    if (props['is-collaborative']) {
-      syncDocumentContent()
-      if (!silent) saveStatus.value = '已同步到协作房间'
-    } else {
-      // 非协作共享模式：检查权限，允许编辑权限的用户保存
-      if (props['share-permission'] === 'edit') {
-        // 继续执行保存逻辑
-      } else if (!silent) {
+  if (props['is-collaborative']) {
+    syncDocumentContent()
+    if (!silent) saveStatus.value = '已同步到协作房间'
+  } else if (props['is-shared']) {
+    // 非协作共享模式：检查权限，允许编辑权限的用户保存
+    if (props['share-permission'] !== 'edit') {
+      if (!silent) {
         ElMessage.warning('共享模式下不能保存')
-        return
       }
+      return
     }
   }
   
@@ -553,7 +588,9 @@ async function handleSave(silent = false) {
     })
     
     let contentToSend = note.value.content
-    if (note.value.type === 'richtext' && typeof note.value.content === 'object') {
+    if (note.value.type === 'code') {
+      contentToSend = codeContent.value
+    } else if (note.value.type === 'richtext' && typeof note.value.content === 'object') {
       if (!note.value.content.ops || note.value.content.ops.length === 0) {
         contentToSend = ''
       } else {
@@ -586,11 +623,11 @@ async function handleSave(silent = false) {
     await loadVersions()
     
     saveStatus.value = '已保存'
-    if (!silent) ElMessage.success('保存成功')
+    ElMessage.success('保存成功')
   } catch (error) {
     console.error('Save note error:', error)
     saveStatus.value = '保存失败'
-    if (!silent) ElMessage.error('保存失败')
+    ElMessage.error('保存失败')
   }
 }
 
@@ -642,86 +679,24 @@ function updateDocumentFromSync(syncedContent) {
 
 function handleTypeChange() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  
+  // 当切换到代码模式时，同步内容
+  if (note.value.type === 'code') {
+    const content = note.value.content
+    if (typeof content === 'object') {
+      codeContent.value = JSON.stringify(content, null, 2)
+    } else {
+      codeContent.value = content || ''
+    }
+  }
 }
 
-async function handleShare() {
+function handleShare() {
   if (!note.value.id) {
     ElMessage.warning('请先保存笔记')
     return
   }
-  
   shareDialogVisible.value = true
-  shareUrl.value = ''
-  await loadExistingShares()
-}
-
-async function loadExistingShares() {
-  try {
-    const response = await noteAPI.getShares(note.value.id)
-    const shares = response.data || []
-    existingShares.value = shares.map(share => ({
-      ...share,
-      share_url: `${window.location.origin}/share/${share.token}`
-    }))
-  } catch (error) {
-    console.error('Load shares error:', error)
-  }
-}
-
-async function generateShareLink() {
-  try {
-    let expireAt = null
-    if (shareData.value.expireAt) {
-      const expireDate = new Date()
-      if (shareData.value.expireAt === '1m') {
-        expireDate.setMinutes(expireDate.getMinutes() + 1)
-      } else if (shareData.value.expireAt === '1d') {
-        expireDate.setDate(expireDate.getDate() + 1)
-      } else if (shareData.value.expireAt === '7d') {
-        expireDate.setDate(expireDate.getDate() + 7)
-      } else if (shareData.value.expireAt === '30d') {
-        expireDate.setDate(expireDate.getDate() + 30)
-      }
-      expireAt = new Date(expireDate.getTime() - expireDate.getTimezoneOffset() * 60000).toISOString().slice(0, -1)
-      shareExpireDate.value = formatDate(expireAt)
-    } else {
-      shareExpireDate.value = ''
-    }
-
-    const result = await noteAPI.share(note.value.id, {
-      permission: shareData.value.permission,
-      expire_at: expireAt,
-      is_collaborative: shareData.value.is_collaborative
-    })
-    shareUrl.value = `${window.location.origin}/share/${result.data.share_token}`
-    ElMessage.success('分享链接生成成功')
-    await loadExistingShares()
-  } catch (error) {
-    console.error('Share note error:', error)
-    ElMessage.error('生成分享链接失败')
-  }
-}
-
-async function deleteShare(token) {
-  try {
-    await noteAPI.deleteShare(token)
-    ElMessage.success('分享已删除')
-    await loadExistingShares()
-  } catch (error) {
-    console.error('Delete share error:', error)
-    ElMessage.error('删除分享失败')
-  }
-}
-
-function formatDate(dateString) {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN')
-}
-
-function copyShareUrl() {
-  navigator.clipboard.writeText(shareUrl.value)
-  ElMessage.success('已复制到剪贴板')
 }
 
 function previewVersion(version) {
@@ -775,6 +750,26 @@ function insertAiContent(content) {
   handleAutoSave()
 }
 
+// 添加语音转写内容到笔记
+function insertVoiceContent(content) {
+  if (!content) return
+  
+  ElMessage.success('语音转写内容已插入')
+  
+  if (note.value.type === 'richtext') {
+    if (!note.value.content || !note.value.content.ops) {
+      note.value.content = { ops: [] }
+    }
+    note.value.content.ops.push({ insert: '\n' })
+    note.value.content.ops.push({ insert: content })
+    note.value.content.ops.push({ insert: '\n' })
+  } else if (note.value.type === 'markdown') {
+    note.value.content = (note.value.content || '') + '\n\n---\n\n**语音转写：**\n\n' + content + '\n\n'
+  }
+  
+  handleAutoSave()
+}
+
 watch(() => note.value.type, (newType, oldType) => {
   if (!oldType) return
   
@@ -808,6 +803,9 @@ onMounted(async () => {
     loadTags()
     loadVersions()
   }
+  
+  // 添加代码块复制按钮事件监听
+  document.addEventListener('click', handleCopyCode)
   
   // 初始化WebSocket并加入协作房间
   if (props['is-collaborative'] && props['room-id']) {
@@ -848,6 +846,9 @@ onUnmounted(() => {
   if (props['is-collaborative'] && props['room-id']) {
     leaveRoom(props['room-id'])
   }
+  
+  // 清理代码块复制按钮事件监听
+  document.removeEventListener('click', handleCopyCode)
 })
 </script>
 
@@ -905,6 +906,13 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
+.code-editor-wrapper {
+  height: 500px;
+  border: 1px solid #e6e6e6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
 .markdown-preview :deep(h1),
 .markdown-preview :deep(h2),
 .markdown-preview :deep(h3) {
@@ -958,5 +966,60 @@ onUnmounted(() => {
 .version-actions {
   display: flex;
   gap: 10px;
+}
+
+.markdown-preview :deep(.code-block) {
+  position: relative;
+  background: #2d2d2d;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.markdown-preview :deep(.code-block .copy-btn) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 10;
+}
+
+.markdown-preview :deep(.code-block .copy-btn:hover) {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.markdown-preview :deep(.code-block code) {
+  display: block;
+  padding: 15px;
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #ccc;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown-preview :deep(.code-block .keyword) {
+  color: #569cd6;
+}
+
+.markdown-preview :deep(.code-block .number) {
+  color: #b5cea8;
+}
+
+.markdown-preview :deep(.code-block .string) {
+  color: #ce9178;
+}
+
+.markdown-preview :deep(.code-block .comment) {
+  color: #6a9955;
+  font-style: italic;
 }
 </style>

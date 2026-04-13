@@ -57,6 +57,7 @@ class User(db.Model, UserMixin):
     tables = relationship('TableDocument', backref='author', lazy=True, cascade='all, delete-orphan')
     whiteboards = relationship('Whiteboard', backref='author', lazy=True, cascade='all, delete-orphan')
     mindmaps = relationship('Mindmap', backref='author', lazy=True, cascade='all, delete-orphan')
+    knowledge_graphs = relationship('KnowledgeGraph', backref='author', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, password):
         """设置加密密码"""
@@ -138,6 +139,8 @@ class Note(db.Model):
     type = db.Column(db.String(20), nullable=False, default='richtext')
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
     is_public = db.Column(db.Boolean, default=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
@@ -216,6 +219,7 @@ class ShareLink(db.Model):
     mindmap_id = db.Column(db.Integer, db.ForeignKey('mindmap.id', ondelete='CASCADE'), nullable=True)
     table_document_id = db.Column(db.Integer, db.ForeignKey('table_document.id', ondelete='CASCADE'), nullable=True)
     whiteboard_id = db.Column(db.Integer, db.ForeignKey('whiteboard.id', ondelete='CASCADE'), nullable=True)
+    knowledge_graph_id = db.Column(db.Integer, db.ForeignKey('knowledge_graph.id', ondelete='CASCADE'), nullable=True)
     token = db.Column(db.String(36), unique=True, nullable=False)
     room_id = db.Column(db.String(50), unique=True, nullable=True)  # 协作房间ID
     permission = db.Column(db.String(10), nullable=False, default='view')
@@ -236,6 +240,8 @@ class Flowchart(db.Model):
     is_public = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     tags = relationship('Tag', secondary=flowchart_tag, backref='flowcharts', lazy='dynamic')
@@ -297,6 +303,8 @@ class TableDocument(db.Model):
     cell_styles = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
 
@@ -359,6 +367,8 @@ class Whiteboard(db.Model):
     data = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
 
@@ -415,6 +425,8 @@ class Mindmap(db.Model):
     is_public = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     share_links = relationship('ShareLink', backref='mindmap', lazy='dynamic', cascade='all, delete-orphan')
@@ -460,4 +472,83 @@ class MindmapVersion(db.Model):
                 'username': self.updater.username if self.updater else '未知用户'
             },
             'updated_at': self.updated_at.isoformat()
+        }
+
+
+# -------------------------- 知识图谱相关模型 --------------------------
+class KnowledgeGraph(db.Model):
+    __tablename__ = 'knowledge_graph'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    nodes = relationship('KnowledgeNode', backref='graph', lazy=True, cascade='all, delete-orphan')
+    relations = relationship('KnowledgeRelation', backref='graph', lazy=True, cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'user_id': self.user_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class KnowledgeNode(db.Model):
+    __tablename__ = 'knowledge_node'
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(50), nullable=False, default='concept')
+    name = db.Column(db.String(255), nullable=False)
+    content = db.Column(db.Text, nullable=True)
+    properties = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    graph_id = db.Column(db.Integer, db.ForeignKey('knowledge_graph.id', ondelete='CASCADE'), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'name': self.name,
+            'content': self.content,
+            'properties': self.properties,
+            'graph_id': self.graph_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class KnowledgeRelation(db.Model):
+    __tablename__ = 'knowledge_relation'
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(50), nullable=False, default='related')
+    label = db.Column(db.String(100), nullable=True)
+    properties = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    graph_id = db.Column(db.Integer, db.ForeignKey('knowledge_graph.id', ondelete='CASCADE'), nullable=False)
+    source_id = db.Column(db.Integer, db.ForeignKey('knowledge_node.id', ondelete='CASCADE'), nullable=False)
+    target_id = db.Column(db.Integer, db.ForeignKey('knowledge_node.id', ondelete='CASCADE'), nullable=False)
+
+    source = relationship('KnowledgeNode', foreign_keys=[source_id], backref='outgoing_relations')
+    target = relationship('KnowledgeNode', foreign_keys=[target_id], backref='incoming_relations')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'label': self.label,
+            'properties': self.properties,
+            'graph_id': self.graph_id,
+            'source_id': self.source_id,
+            'target_id': self.target_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

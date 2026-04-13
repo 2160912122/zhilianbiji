@@ -96,17 +96,19 @@
           class="mindmap-svg"
           @mousedown="handleSvgMouseDown"
         >
-          <g ref="zoomGroupRef">
-            <line
+          <!-- 缩放组 -->
+          <g ref="zoomGroupRef" :transform="`scale(${zoomLevel.value})`">
+            <!-- 边 -->
+            <path
               v-for="edge in edges"
               :key="`${edge.from}-${edge.to}`"
-              :x1="getNodePosition(edge.from).x"
-              :y1="getNodePosition(edge.from).y"
-              :x2="getNodePosition(edge.to).x"
-              :y2="getNodePosition(edge.to).y"
-              stroke="#999"
+              :d="getEdgePath(edge.from, edge.to)"
+              stroke="#666"
               stroke-width="2"
+              fill="none"
+              stroke-linecap="round"
             />
+            <!-- 节点 -->
             <g
               v-for="node in nodes"
               :key="node.id"
@@ -183,68 +185,11 @@
     </el-card>
     
     <!-- 分享对话框 -->
-    <el-dialog
-      v-model="shareDialogVisible"
-      title="分享脑图"
-      width="600px"
-    >
-      <div>
-        <h4>创建新分享链接</h4>
-        <el-form :model="shareForm" label-width="100px" style="margin-bottom: 20px;">
-          <el-form-item label="权限">
-            <el-select v-model="shareForm.permission" placeholder="请选择权限" style="width: 200px;">
-              <el-option label="只读" value="view" />
-              <el-option label="可编辑" value="edit" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="过期时间">
-            <el-date-picker
-              v-model="shareForm.expire_at"
-              type="datetime"
-              placeholder="选择过期时间"
-              style="width: 200px;"
-              format="YYYY-MM-DD HH:mm:ss"
-              value-format="YYYY-MM-DD HH:mm:ss"
-            />
-          </el-form-item>
-        </el-form>
-        <el-button type="primary" @click="createShareLink">创建分享链接</el-button>
-        
-        <h4 style="margin-top: 30px;">已创建的分享链接</h4>
-        <el-table :data="shareLinks" style="width: 100%;">
-          <el-table-column prop="share_url" label="分享链接" min-width="250">
-            <template #default="scope">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <a :href="getFullShareUrl(scope.row.share_url)" target="_blank" style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ getFullShareUrl(scope.row.share_url) }}</a>
-                <el-button size="small" @click="copyShareLink(scope.row.share_url)">
-                  <el-icon><DocumentCopy /></el-icon>
-                </el-button>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="permission" label="权限" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.permission === 'view' ? 'info' : 'success'">
-                {{ scope.row.permission === 'view' ? '只读' : '可编辑' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="expire_at" label="过期时间" width="180">
-            <template #default="scope">
-              {{ scope.row.expire_at || '永不过期' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180" />
-          <el-table-column label="操作" width="100">
-            <template #default="scope">
-              <el-button type="danger" size="small" @click="deleteShareLink(scope.row.token)">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </el-dialog>
+    <ShareDialog
+      v-model:visible="shareDialogVisible"
+      :resource-id="mindmapId"
+      resource-type="mindmap"
+    />
     
     <!-- 版本历史抽屉 -->
     <el-drawer v-model="showVersions" title="版本历史" size="40%">
@@ -273,11 +218,12 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { mindmapAPI } from '@/api/editor'
-import { ElMessage, ElDialog, ElForm, ElFormItem, ElSelect, ElOption, ElDatePicker, ElButton, ElTable, ElTableColumn, ElTag, ElIcon } from 'element-plus'
-import { Share, Delete, Check, DocumentCopy, Back, Clock } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { Share, Delete, Check, Back, Clock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 import { useAIStore } from '@/store/ai'
 import AIModuleButton from '@/components/AIModuleButton.vue'
+import ShareDialog from '@/components/ShareDialog.vue'
 
 const props = defineProps({
   isNew: {
@@ -348,10 +294,6 @@ const MAX_HISTORY = 50
 
 // 分享功能
 const shareDialogVisible = ref(false)
-const shareForm = ref({
-  permission: 'view',
-  expire_at: ''
-})
 
 // 版本历史功能
 const versions = ref([])
@@ -417,9 +359,67 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
         console.log('解析后的脑图数据:', mindmapData)
         
         if (mindmapData.nodes && Array.isArray(mindmapData.nodes) && mindmapData.edges && Array.isArray(mindmapData.edges)) {
-          // 使用AI生成的脑图数据
-          nodes.value = mindmapData.nodes
-          edges.value = mindmapData.edges
+          // 转换AI生成的脑图数据格式，确保与前端期望的格式匹配
+          const transformedNodes = mindmapData.nodes.map(node => {
+            // 处理节点属性映射
+            const text = node.text || node.label || '未命名节点' // 支持text或label属性
+            // 根据文本长度计算合适的宽度
+            const textLength = text.length
+            const width = Math.max(120, textLength * 10)
+            
+            const transformedNode = {
+              id: node.id,
+              text: text,
+              x: node.x || (node.position ? node.position.x : 400), // 支持直接x属性或position.x
+              y: node.y || (node.position ? node.position.y : 300), // 支持直接y属性或position.y
+              width: node.width || width, // 根据文本长度计算宽度
+              height: node.height || 40, // 默认高度
+              parentId: node.parentId || null // 默认父节点ID
+            }
+            return transformedNode
+          })
+          
+          // 转换边数据（保持不变，因为格式已经匹配）
+          const transformedEdges = mindmapData.edges
+          
+          // 使用转换后的脑图数据
+          nodes.value = transformedNodes
+          edges.value = transformedEdges
+          
+          // 确保中心节点居中显示
+          const centerNode = nodes.value.find(node => node.parentId === null)
+          if (centerNode) {
+            // 设置中心节点的位置为居中
+            centerNode.x = 400
+            centerNode.y = 300
+            
+            // 递归计算所有节点的位置
+            function positionNodes(parentNode, level = 1) {
+              // 获取当前节点的所有直接子节点
+              const children = nodes.value.filter(node => node.parentId === parentNode.id)
+              const totalChildren = children.length
+              
+              if (totalChildren > 0) {
+                // 计算子节点的角度和距离
+                const distance = 180 * level // 每级增加距离
+                
+                children.forEach((childNode, index) => {
+                  // 计算角度，使子节点围绕父节点均匀分布
+                  const angle = (index / totalChildren) * Math.PI * 2
+                  
+                  // 计算子节点的位置
+                  childNode.x = parentNode.x + Math.cos(angle) * distance
+                  childNode.y = parentNode.y + Math.sin(angle) * distance
+                  
+                  // 递归处理子节点的子节点
+                  positionNodes(childNode, level + 1)
+                })
+              }
+            }
+            
+            // 从中心节点开始递归定位所有节点
+            positionNodes(centerNode)
+          }
           
           // 更新节点ID计数器
           const maxNodeId = Math.max(...nodes.value.map(node => node.id), 1)
@@ -444,8 +444,57 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
           console.log('修复后解析的脑图数据:', mindmapData)
           
           if (mindmapData.nodes && Array.isArray(mindmapData.nodes) && mindmapData.edges && Array.isArray(mindmapData.edges)) {
-            nodes.value = mindmapData.nodes
-            edges.value = mindmapData.edges
+            // 转换AI生成的脑图数据格式
+            const transformedNodes = mindmapData.nodes.map(node => {
+              const text = node.text || node.label || '未命名节点'
+              // 根据文本长度计算合适的宽度
+              const textLength = text.length
+              const width = Math.max(120, textLength * 10)
+              
+              const transformedNode = {
+                id: node.id,
+                text: text,
+                x: node.x || (node.position ? node.position.x : 400),
+                y: node.y || (node.position ? node.position.y : 300),
+                width: node.width || width, // 根据文本长度计算宽度
+                height: node.height || 40,
+                parentId: node.parentId || null
+              }
+              return transformedNode
+            })
+            
+            const transformedEdges = mindmapData.edges
+            
+            nodes.value = transformedNodes
+            edges.value = transformedEdges
+            
+            // 确保中心节点居中显示
+            const centerNode = nodes.value.find(node => node.parentId === null)
+            if (centerNode) {
+              // 设置中心节点的位置为居中
+              centerNode.x = 400
+              centerNode.y = 300
+              
+              // 重新计算其他节点的位置，使其围绕中心节点分布
+              const centerX = centerNode.x
+              const centerY = centerNode.y
+              
+              // 为每个子节点计算合适的位置
+              nodes.value.forEach(node => {
+                if (node.parentId === centerNode.id) {
+                  // 计算子节点的角度和距离
+                  const index = nodes.value.findIndex(n => n.parentId === centerNode.id && n.id <= node.id)
+                  const totalChildren = nodes.value.filter(n => n.parentId === centerNode.id).length
+                  const angle = (index / totalChildren) * Math.PI * 2
+                  const distance = 180
+                  
+                  // 计算子节点的位置
+                  node.x = centerX + Math.cos(angle) * distance
+                  node.y = centerY + Math.sin(angle) * distance
+                }
+              })
+            }
+            
             const maxNodeId = Math.max(...nodes.value.map(node => node.id), 1)
             nodeIdCounter = maxNodeId + 1
             handleSave(true)
@@ -488,9 +537,9 @@ watch(() => aiStore.hasNewContent, (hasNewContent) => {
           console.log('尝试生成默认脑图数据')
           const defaultMindmap = {
             nodes: [
-              { id: 1, label: '主题', position: { x: 400, y: 100 } },
-              { id: 2, label: '子主题1', position: { x: 200, y: 200 } },
-              { id: 3, label: '子主题2', position: { x: 600, y: 200 } }
+              { id: 1, text: '主题', x: 400, y: 100, width: 120, height: 40, parentId: null },
+              { id: 2, text: '子主题1', x: 200, y: 200, width: 120, height: 40, parentId: 1 },
+              { id: 3, text: '子主题2', x: 600, y: 200, width: 120, height: 40, parentId: 1 }
             ],
             edges: [
               { from: 1, to: 2 },
@@ -704,7 +753,7 @@ async function handleSave(silent = false) {
     const token = localStorage.getItem('token')
     if (!token) {
       saveStatus.value = '保存失败'
-      if (!silent) ElMessage.error('请先登录')
+      ElMessage.error('请先登录')
       router.push('/login')
       return
     }
@@ -724,7 +773,7 @@ async function handleSave(silent = false) {
     // 检查数据是否有明显问题
     if (!data.title) {
       console.error('【保存失败】脑图标题不能为空')
-      if (!silent) ElMessage.error('脑图标题不能为空')
+      ElMessage.error('脑图标题不能为空')
       return
     }
     
@@ -745,7 +794,7 @@ async function handleSave(silent = false) {
     }
     
     saveStatus.value = '已保存'
-    if (!silent) ElMessage.success('保存成功')
+    ElMessage.success('保存成功')
   } catch (error) {
     // 打印详细的错误信息
     console.error('【保存失败-详细错误】:', {
@@ -759,10 +808,10 @@ async function handleSave(silent = false) {
       // 登录已过期，跳转到登录页面
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (!silent) ElMessage.error('登录已过期，请重新登录')
+      ElMessage.error('登录已过期，请重新登录')
       router.push('/login')
     } else {
-      if (!silent) ElMessage.error('保存失败')
+      ElMessage.error('保存失败')
     }
   }
 }
@@ -770,6 +819,19 @@ async function handleSave(silent = false) {
 function getNodePosition(nodeId) {
   const node = nodes.value.find(n => n.id === nodeId)
   return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : { x: 0, y: 0 }
+}
+
+function getEdgePath(fromId, toId) {
+  const fromPos = getNodePosition(fromId)
+  const toPos = getNodePosition(toId)
+  
+  // 计算控制点，使用贝塞尔曲线
+  const dx = toPos.x - fromPos.x
+  const dy = toPos.y - fromPos.y
+  const controlPoint1 = { x: fromPos.x + dx * 0.3, y: fromPos.y + dy * 0.3 }
+  const controlPoint2 = { x: toPos.x - dx * 0.3, y: toPos.y - dy * 0.3 }
+  
+  return `M ${fromPos.x} ${fromPos.y} C ${controlPoint1.x} ${controlPoint1.y}, ${controlPoint2.x} ${controlPoint2.y}, ${toPos.x} ${toPos.y}`
 }
 
 function addChildNode() {
@@ -814,7 +876,7 @@ function addChildNode() {
     text: '新节点',
     x: parent.x + horizontalOffset,
     y: newY,
-    width: 100,
+    width: 120, // 增加默认宽度，确保文字完全显示
     height: 40,
     parentId: parent.id
   }
@@ -945,79 +1007,12 @@ onMounted(() => {
 })
 
 // 分享功能相关方法
-async function showShareDialog() {
+function showShareDialog() {
   if (!mindmap.value.id) {
-    ElMessage.error('请先保存脑图')
+    ElMessage.error("请先保存脑图")
     return
   }
-  
   shareDialogVisible.value = true
-  await loadShareLinks()
-}
-
-async function createShareLink() {
-  if (!mindmap.value.id) {
-    ElMessage.error('请先保存脑图')
-    return
-  }
-  
-  try {
-    const response = await mindmapAPI.share(mindmap.value.id, {
-      permission: shareForm.value.permission,
-      expire_at: shareForm.value.expire_at
-    })
-    
-    ElMessage.success('分享链接创建成功')
-    await loadShareLinks()
-    
-    // 重置表单
-    shareForm.value = {
-      permission: 'view',
-      expire_at: ''
-    }
-  } catch (error) {
-    console.error('创建分享链接失败:', error)
-    ElMessage.error('创建分享链接失败')
-  }
-}
-
-async function loadShareLinks() {
-  if (!mindmap.value.id) return
-  
-  try {
-    const response = await mindmapAPI.getShares(mindmap.value.id)
-    shareLinks.value = response
-  } catch (error) {
-    console.error('加载分享链接失败:', error)
-    ElMessage.error('加载分享链接失败')
-  }
-}
-
-async function deleteShareLink(token) {
-  try {
-    await mindmapAPI.deleteShare(token)
-    ElMessage.success('分享链接已删除')
-    await loadShareLinks()
-  } catch (error) {
-    console.error('删除分享链接失败:', error)
-    ElMessage.error('删除分享链接失败')
-  }
-}
-
-function getFullShareUrl(shareUrl) {
-  const baseUrl = window.location.origin
-  return baseUrl + shareUrl
-}
-
-async function copyShareLink(shareUrl) {
-  const fullUrl = getFullShareUrl(shareUrl)
-  try {
-    await navigator.clipboard.writeText(fullUrl)
-    ElMessage.success('分享链接已复制到剪贴板')
-  } catch (error) {
-    console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
-  }
 }
 
 // 从文本描述中生成脑图数据

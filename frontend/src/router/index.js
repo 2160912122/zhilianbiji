@@ -2,6 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   {
+    path: '/',
+    name: 'Home',
+    component: () => import('@/views/Home.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
@@ -25,6 +31,21 @@ const routes = [
         component: () => import('@/views/Dashboard.vue')
       },
       {
+        path: 'search',
+        name: 'SearchResults',
+        component: () => import('@/views/SearchResults.vue')
+      },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: () => import('@/views/Profile.vue')
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/Settings.vue')
+      },
+      {
         path: 'notes',
         name: 'Notes',
         component: () => import('@/views/Notes.vue')
@@ -39,6 +60,11 @@ const routes = [
         path: 'notes/:id',
         name: 'NoteEdit',
         component: () => import('@/views/NoteEditor.vue')
+      },
+      {
+        path: 'trash',
+        name: 'Trash',
+        component: () => import('@/views/Trash.vue')
       },
       {
         path: 'tables',
@@ -106,6 +132,22 @@ const routes = [
       },
 
       {
+        path: 'knowledge-graphs',
+        name: 'KnowledgeGraphs',
+        component: () => import('@/views/KnowledgeGraphs.vue')
+      },
+      {
+        path: 'knowledge-graphs/new',
+        name: 'KnowledgeGraphNew',
+        component: () => import('@/views/KnowledgeGraphEditor.vue'),
+        props: { isNew: true }
+      },
+      {
+        path: 'knowledge-graphs/:id',
+        name: 'KnowledgeGraphEdit',
+        component: () => import('@/views/KnowledgeGraphEditor.vue')
+      },
+      {
         path: 'admin',
         name: 'Admin',
         component: () => import('@/views/Admin.vue'),
@@ -126,14 +168,10 @@ const routes = [
 
     ]
   },
-  // 404重定向简化，避免任何读取异常
   {
     path: '/share/:token',
     name: 'SharedContent',
-    beforeEnter: (to, from, next) => {
-      // 重定向到后端的分享内容接口
-      window.location.href = `http://localhost:5000/share/${to.params.token}`
-    }
+    component: () => import('@/views/SharedContent.vue')
   },
   {
     path: '/test',
@@ -147,7 +185,7 @@ const routes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/login'
+    redirect: '/'
   }
 ]
 
@@ -156,9 +194,7 @@ const router = createRouter({
   routes
 })
 
-// 极简拦截器：只保留必要逻辑，杜绝冲突
 router.beforeEach((to, from, next) => {
-    // 强制容错：防止localStorage读取失败
     let token = ''
     try {
       token = localStorage.getItem('token') || ''
@@ -166,34 +202,27 @@ router.beforeEach((to, from, next) => {
       token = ''
     }
 
-    // 跳过分享链接的权限检查
     if (to.path.startsWith('/share/')) {
-      console.log('访问分享链接，跳过权限检查:', to.path)
       next()
       return
     }
 
-    // 1. 访问登录/注册页：如果有token，直接跳dashboard
     if (to.meta.requiresGuest && token) {
       next('/dashboard')
       return
     }
 
-    // 2. 访问需要权限的页面：没token才跳登录
     if (to.meta.requiresAuth && !token) {
-      next('/login')
+      next('/')
       return
     }
 
-    // 3. 访问需要管理员权限的页面：非管理员跳dashboard
     if (to.meta.requiresAdmin && token) {
       let isAdmin = false
       try {
-        // 从localStorage检查，支持多种格式
         const storedIsAdmin = localStorage.getItem('is_admin')
         isAdmin = storedIsAdmin === '1' || storedIsAdmin === 1 || storedIsAdmin === true
         
-        // 额外从user对象检查
         const userStr = localStorage.getItem('user')
         if (userStr) {
           const user = JSON.parse(userStr)
@@ -212,7 +241,6 @@ router.beforeEach((to, from, next) => {
       }
     }
 
-    // 所有情况都放行
     next()
   })
 

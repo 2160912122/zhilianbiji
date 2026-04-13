@@ -553,11 +553,11 @@ async function handleSave(silent = false) {
     }
     
     saveStatus.value = '已保存'
-    if (!silent) ElMessage.success('保存成功')
+    ElMessage.success('保存成功')
   } catch (error) {
     console.error('Save table error:', error)
     saveStatus.value = '保存失败'
-    if (!silent) ElMessage.error('保存失败')
+    ElMessage.error('保存失败')
     
     // 显示具体的错误信息
     if (error.response && error.response.data && error.response.data.message) {

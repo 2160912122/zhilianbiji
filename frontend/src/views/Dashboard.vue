@@ -5,7 +5,6 @@
       <div class="header-content">
         <div class="header-left">
           <h1 class="page-title">仪表盘</h1>
-          <p class="page-desc">欢迎回来，{{ userStore.user?.username || '用户' }}！这里是您的个人数据概览</p>
         </div>
         <div class="header-actions">
           <el-button type="primary" @click="loadStats" :loading="loading" round class="refresh-btn">
@@ -25,7 +24,7 @@
     
     <!-- 通用统计卡片 -->
     <el-row :gutter="24">
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card class="stat-card" hover>
           <div class="stat-content">
             <div class="stat-icon-container primary">
@@ -35,15 +34,11 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats.notes || 0 }}</div>
               <div class="stat-label">笔记</div>
-              <div class="stat-trend positive">
-                <el-icon><CaretTop /></el-icon>
-                <span>2.5%</span>
-              </div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card class="stat-card" hover>
           <div class="stat-content">
             <div class="stat-icon-container success">
@@ -53,15 +48,11 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats.tables || 0 }}</div>
               <div class="stat-label">表格</div>
-              <div class="stat-trend positive">
-                <el-icon><CaretTop /></el-icon>
-                <span>1.8%</span>
-              </div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card class="stat-card" hover>
           <div class="stat-content">
             <div class="stat-icon-container warning">
@@ -71,15 +62,14 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats.whiteboards || 0 }}</div>
               <div class="stat-label">白板</div>
-              <div class="stat-trend positive">
-                <el-icon><CaretTop /></el-icon>
-                <span>3.2%</span>
-              </div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+    </el-row>
+    
+    <el-row :gutter="24" style="margin-top: 24px">
+      <el-col :span="12">
         <el-card class="stat-card" hover>
           <div class="stat-content">
             <div class="stat-icon-container danger">
@@ -89,15 +79,11 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats.mindmaps || 0 }}</div>
               <div class="stat-label">脑图</div>
-              <div class="stat-trend positive">
-                <el-icon><CaretTop /></el-icon>
-                <span>4.5%</span>
-              </div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="12">
         <el-card class="stat-card" hover>
           <div class="stat-content">
             <div class="stat-icon-container info">
@@ -107,33 +93,6 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats.flowcharts || 0 }}</div>
               <div class="stat-label">流程图</div>
-              <div class="stat-trend positive">
-                <el-icon><CaretTop /></el-icon>
-                <span>2.1%</span>
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="18">
-        <el-card class="stat-card summary-card" hover>
-          <div class="stat-content summary-content">
-            <div class="summary-info">
-              <div class="summary-title">总资源</div>
-              <div class="summary-value">{{ totalResources }}</div>
-              <div class="summary-desc">您的所有创作内容</div>
-            </div>
-            <div class="summary-chart">
-              <div class="chart-container">
-                <el-progress 
-                  :percentage="resourceUsage" 
-                  :stroke-width="12" 
-                  :color="resourceUsageColor" 
-                  status="success"
-                  class="progress-bar"
-                />
-                <div class="chart-text">{{ resourceUsage }}% 利用率</div>
-              </div>
             </div>
           </div>
         </el-card>
@@ -246,25 +205,21 @@
               <div class="stat-icon"><el-icon><Plus /></el-icon></div>
               <div class="stat-label">本月创建</div>
               <div class="stat-value">{{ monthlyCreated }}</div>
-              <div class="stat-change positive">+12.5%</div>
             </div>
             <div class="stat-item">
               <div class="stat-icon"><el-icon><Edit /></el-icon></div>
               <div class="stat-label">本月编辑</div>
               <div class="stat-value">{{ monthlyEdited }}</div>
-              <div class="stat-change positive">+8.3%</div>
             </div>
             <div class="stat-item">
               <div class="stat-icon"><el-icon><Share /></el-icon></div>
               <div class="stat-label">分享次数</div>
               <div class="stat-value">{{ shareCount }}</div>
-              <div class="stat-change positive">+5.2%</div>
             </div>
             <div class="stat-item">
               <div class="stat-icon"><el-icon><Cpu /></el-icon></div>
               <div class="stat-label">AI 使用</div>
               <div class="stat-value">{{ aiUsage }}</div>
-              <div class="stat-change positive">+15.8%</div>
             </div>
           </div>
         </el-card>
@@ -314,88 +269,160 @@ const stats = ref({
 const recentItems = ref([])
 const loading = ref(false)
 
-// 模拟数据
-const monthlyCreated = ref(12)
-const monthlyEdited = ref(35)
-const shareCount = ref(8)
-const aiUsage = ref(15)
+// 使用统计数据
+const monthlyCreated = ref(0)
+const monthlyEdited = ref(0)
+const shareCount = ref(0)
+const aiUsage = ref(0)
 
-// 计算属性
-const totalResources = computed(() => {
-  return Object.values(stats.value).reduce((sum, value) => sum + value, 0)
-})
 
-const resourceUsage = computed(() => {
-  const total = totalResources.value
-  return total > 0 ? Math.min(Math.round((total / 100) * 100), 100) : 0
-})
-
-const resourceUsageColor = computed(() => {
-  const usage = resourceUsage.value
-  if (usage < 30) return '#67c23a'
-  if (usage < 70) return '#e6a23c'
-  return '#f56c6c'
-})
 
 // 2. 加载数据
 async function loadStats() {
   loading.value = true
   try {
-    // 加载当前用户的个人数据
-    // 替换原有的多API调用，统一用request请求
-    const [notesRes, tablesRes, whiteboardsRes, mindmapsRes, flowchartsRes] = await Promise.all([
-      request.get('/api/notes'),
-      request.get('/api/tables'),
-      request.get('/api/whiteboards'),
-      request.get('/api/mindmaps'),
-      request.get('/api/flowcharts')
-    ])
+    // 检查用户是否是管理员
+    const isAdmin = userStore.user?.is_admin || localStorage.getItem('is_admin') === '1'
+    
+    if (isAdmin) {
+      // 管理员加载所有用户的数据
+      const response = await request.get('/api/admin/dashboard/stats')
+      if (response.code === 200) {
+          const adminStats = response.data
+          stats.value = {
+            notes: adminStats.totalNotes || 0,
+            tables: adminStats.totalTables || 0,
+            whiteboards: adminStats.totalWhiteboards || 0,
+            mindmaps: adminStats.totalMindmaps || 0,
+            flowcharts: adminStats.totalFlowcharts || 0
+          }
+          
+          // 加载使用统计数据
+          monthlyCreated.value = adminStats.totalNotes || 0
+          monthlyEdited.value = adminStats.totalNotes || 0
+          shareCount.value = 0 // 后端暂时没有提供分享次数数据
+          aiUsage.value = 0 // 后端暂时没有提供AI使用次数数据
+        
+        // 加载最近更新的内容
+        let contentData = null
+        const contentResponse = await request.get('/api/admin/content')
+        if (contentResponse.code === 200) {
+          contentData = contentResponse.data
+          if (contentData && Array.isArray(contentData.items)) {
+            recentItems.value = contentData.items
+              .map(item => ({
+                ...item,
+                type: item.type
+              }))
+              .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
+              .slice(0, 5)
+          } else {
+            console.error('内容数据格式不正确:', contentData)
+            recentItems.value = []
+          }
+        }
+        
+        // 计算使用统计数据
+        const now = new Date()
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        
+        // 计算本月创建的内容数
+        const contentItems = contentData?.items || []
+        monthlyCreated.value = contentItems.filter(item => {
+          const createdAt = new Date(item.created_at || item.updated_at)
+          return createdAt >= startOfMonth
+        }).length
+        
+        // 计算本月编辑的内容数
+        monthlyEdited.value = contentItems.filter(item => {
+          const updatedAt = new Date(item.updated_at)
+          return updatedAt >= startOfMonth
+        }).length
+        
+        // 计算分享次数（暂时使用模拟数据）
+        shareCount.value = Math.floor(Math.random() * 10)
+        
+        // 计算AI使用次数（暂时使用模拟数据）
+        aiUsage.value = Math.floor(Math.random() * 20)
+      }
+    } else {
+      // 普通用户加载自己的数据
+      const [notesRes, tablesRes, whiteboardsRes, mindmapsRes, flowchartsRes] = await Promise.all([
+        request.get('/api/notes'),
+        request.get('/api/tables'),
+        request.get('/api/whiteboards'),
+        request.get('/api/mindmaps'),
+        request.get('/api/flowcharts')
+      ])
 
-    // 处理后端返回的数据格式（code, message, data）
-const getArrayData = (res) => {
-  console.log('处理API响应数据:', res)
-  if (res && typeof res === 'object') {
-    // 检查是否是标准API响应格式
-    if (res.code === 200 && Array.isArray(res.data)) {
-      return res.data
-    }
-    // 检查是否直接返回了数组
-    if (Array.isArray(res)) {
-      return res
-    }
-  }
-  return []
-}
+      // 处理后端返回的数据格式（code, message, data）
+      const getArrayData = (res) => {
+        console.log('处理API响应数据:', res)
+        if (res && typeof res === 'object') {
+          // 检查是否是标准API响应格式
+          if (res.code === 200 && Array.isArray(res.data)) {
+            return res.data
+          }
+          // 检查是否直接返回了数组
+          if (Array.isArray(res)) {
+            return res
+          }
+        }
+        return []
+      }
 
-    // 提取数据数组
-    const notesData = getArrayData(notesRes)
-    const tablesData = getArrayData(tablesRes)
-    const whiteboardsData = getArrayData(whiteboardsRes)
-    const mindmapsData = getArrayData(mindmapsRes)
-    const flowchartsData = getArrayData(flowchartsRes)
+      // 提取数据数组
+      const notesData = getArrayData(notesRes)
+      const tablesData = getArrayData(tablesRes)
+      const whiteboardsData = getArrayData(whiteboardsRes)
+      const mindmapsData = getArrayData(mindmapsRes)
+      const flowchartsData = getArrayData(flowchartsRes)
 
-    // 赋值个人统计数据
-    stats.value = {
-      notes: notesData.length,
-      tables: tablesData.length,
-      whiteboards: whiteboardsData.length,
-      mindmaps: mindmapsData.length,
-      flowcharts: flowchartsData.length
+      // 赋值个人统计数据
+      stats.value = {
+        notes: notesData.length,
+        tables: tablesData.length,
+        whiteboards: whiteboardsData.length,
+        mindmaps: mindmapsData.length,
+        flowcharts: flowchartsData.length
+      }
+
+      // 计算使用统计数据
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      
+      // 计算本月创建的内容数
+      const allItems = [...notesData, ...tablesData, ...whiteboardsData, ...mindmapsData, ...flowchartsData]
+      monthlyCreated.value = allItems.filter(item => {
+        const createdAt = new Date(item.created_at || item.updated_at)
+        return createdAt >= startOfMonth
+      }).length
+      
+      // 计算本月编辑的内容数
+      monthlyEdited.value = allItems.filter(item => {
+        const updatedAt = new Date(item.updated_at)
+        return updatedAt >= startOfMonth
+      }).length
+      
+      // 计算分享次数（暂时使用模拟数据）
+      shareCount.value = Math.floor(Math.random() * 10)
+      
+      // 计算AI使用次数（暂时使用模拟数据）
+      aiUsage.value = Math.floor(Math.random() * 20)
+
+      // 整理最近更新的内容
+      recentItems.value = [
+        ...notesData.slice(0, 2).map(n => ({ ...n, type: 'note' })),
+        ...tablesData.slice(0, 2).map(t => ({ ...t, type: 'table' })),
+        ...whiteboardsData.slice(0, 2).map(w => ({ ...w, type: 'whiteboard' })),
+        ...mindmapsData.slice(0, 2).map(m => ({ ...m, type: 'mindmap' })),
+        ...flowchartsData.slice(0, 2).map(f => ({ ...f, type: 'flowchart' }))
+      ]
+        .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
+        .slice(0, 5)
     }
 
     console.log('仪表盘数据:', stats.value)
-
-    // 整理最近更新的内容
-    recentItems.value = [
-      ...notesData.slice(0, 2).map(n => ({ ...n, type: 'note' })),
-      ...tablesData.slice(0, 2).map(t => ({ ...t, type: 'table' })),
-      ...whiteboardsData.slice(0, 2).map(w => ({ ...w, type: 'whiteboard' })),
-      ...mindmapsData.slice(0, 2).map(m => ({ ...m, type: 'mindmap' })),
-      ...flowchartsData.slice(0, 2).map(f => ({ ...f, type: 'flowchart' }))
-    ]
-      .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
-      .slice(0, 5)
-
     console.log('最近更新内容:', recentItems.value)
     // 检查每个项目的type属性
     recentItems.value.forEach((item, index) => {

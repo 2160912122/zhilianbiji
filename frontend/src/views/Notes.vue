@@ -67,14 +67,21 @@
             {{ formatDate(row.updated_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="editNote(row.id)">编辑</el-button>
+            <el-button link type="warning" @click="shareNote(row.id)">分享</el-button>
             <el-button link type="danger" @click="deleteNote(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+    
+    <ShareDialog
+      v-model:visible="shareDialogVisible"
+      :resource-id="currentNoteId"
+      resource-type="note"
+    />
   </div>
 </template>
 
@@ -84,6 +91,7 @@ import { useRouter } from 'vue-router'
 import { noteAPI } from '@/api/note'
 import { categoryAPI } from '@/api/common'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ShareDialog from '@/components/ShareDialog.vue'
 
 const router = useRouter()
 
@@ -92,6 +100,8 @@ const categories = ref([])
 const searchQuery = ref('')
 const selectedCategory = ref(null)
 const selectedType = ref('')
+const shareDialogVisible = ref(false)
+const currentNoteId = ref(null)
 
 let searchTimer = null
 
@@ -161,6 +171,11 @@ async function deleteNote(id) {
       console.error('Delete note error:', error)
     }
   }
+}
+
+function shareNote(id) {
+  currentNoteId.value = id
+  shareDialogVisible.value = true
 }
 
 function getCategoryName(categoryId) {

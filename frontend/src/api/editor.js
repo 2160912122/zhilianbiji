@@ -242,3 +242,88 @@ export const flowchartAPI = {
     })
   }
 }
+
+export const knowledgeGraphAPI = {
+  getList() {
+    return request({
+      url: '/api/knowledge-graphs',
+      method: 'get'
+    })
+  },
+  
+  create(data) {
+    return request({
+      url: '/api/knowledge-graphs',
+      method: 'post',
+      data
+    })
+  },
+  
+  get(id) {
+    return request({
+      url: `/api/knowledge-graphs/${id}`,
+      method: 'get'
+    })
+  },
+  
+  update(id, data) {
+    return request({
+      url: `/api/knowledge-graphs/${id}`,
+      method: 'put',
+      data
+    })
+  },
+  
+  delete(id) {
+    return request({
+      url: `/api/knowledge-graphs/${id}`,
+      method: 'delete'
+    })
+  },
+  
+  createNode(graphId, data) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/nodes`,
+      method: 'post',
+      data
+    })
+  },
+  
+  updateNode(graphId, nodeId, data) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/nodes/${nodeId}`,
+      method: 'put',
+      data
+    })
+  },
+  
+  deleteNode(graphId, nodeId) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/nodes/${nodeId}`,
+      method: 'delete'
+    })
+  },
+  
+  createRelation(graphId, data) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/relations`,
+      method: 'post',
+      data
+    })
+  },
+  
+  updateRelation(graphId, relationId, data) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/relations/${relationId}`,
+      method: 'put',
+      data
+    })
+  },
+  
+  deleteRelation(graphId, relationId) {
+    return request({
+      url: `/api/knowledge-graphs/${graphId}/relations/${relationId}`,
+      method: 'delete'
+    })
+  }
+}

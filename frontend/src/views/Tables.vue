@@ -25,14 +25,21 @@
             {{ formatDate(row.updated_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="editTable(row.id)">编辑</el-button>
+            <el-button link type="warning" @click="shareTable(row.id)">分享</el-button>
             <el-button link type="danger" @click="deleteTable(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+    
+    <ShareDialog
+      v-model:visible="shareDialogVisible"
+      :resource-id="currentTableId"
+      resource-type="table_document"
+    />
   </div>
 </template>
 
@@ -41,9 +48,12 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tableAPI } from '@/api/editor'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ShareDialog from '@/components/ShareDialog.vue'
 
 const router = useRouter()
 const tables = ref([])
+const shareDialogVisible = ref(false)
+const currentTableId = ref(null)
 
 async function loadTables() {
   try {
@@ -64,6 +74,11 @@ async function loadTables() {
 
 function editTable(id) {
   router.push(`/tables/${id}`)
+}
+
+function shareTable(id) {
+  currentTableId.value = id
+  shareDialogVisible.value = true
 }
 
 async function deleteTable(id) {

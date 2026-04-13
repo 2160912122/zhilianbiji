@@ -2,7 +2,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
 const request = axios.create({
-  baseURL: '/',
+  baseURL: import.meta.env.VITE_APP_API_URL + '/',
   timeout: 120000, // 增加超时时间到120秒，适应AI生成内容的长时间处理
   withCredentials: true,
   responseType: 'json',
@@ -32,7 +32,7 @@ request.interceptors.response.use(
     console.error('请求错误:', error)
     // 核心修复1：增加错误容错，避免无response时报错
     if (!error.response) {
-      ElMessage.error('无法连接后端，请确认http://localhost:5000能访问')
+      ElMessage.error('无法连接后端，请确认服务已启动')
       return Promise.reject(error)
     }
 
